@@ -13,14 +13,17 @@ class SequenceFeature:
     Base class for holding peptide sequence feature(s).
     """
     
-    def __init__(self,data_file,window_size=None,normalize=True,features_to_ignore=None):
+    def __init__(self,data_file,seq_length,normalize=True,window_size=1,use_flip_pattern=True,features_to_ignore=None):
         """
         Initialize the class
         """
         
         self._data_file = data_file
+        self._seq_length = seq_length
+        
+        self._normalize = normalize
         self._window_size = window_size
-        self._normalized = normalize
+        self._use_flip_pattern = use_flip_pattern
         self._features_to_ignore = np.array(features_to_ignore)
 
         self._read_aa_data_file()
@@ -45,17 +48,17 @@ class SequenceFeature:
         lines = [l for l in lines if l.strip() != "" and not l.startswith("#")]
         
         # Grab top line for each feature
-        self._features = np.array(lines[0].split())
+        self._base_features = np.array(lines[0].split())
 
         # Go through lines, populating features for each amino acid
-        self._feature_dict = {}
+        self._base_feature_dict = {}
         for l in lines[1:]:
             col = l.split()
 
             aa = col[0]
-            self._feature_dict[aa] = {}
+            self._base__feature_dict[aa] = {}
 
-            for i, p in enumerate(self._features):
+            for i, p in enumerate(self._base_features):
 
                 if self._features_to_ignore != None:
                     if p in self._features_to_ignore:
@@ -66,30 +69,51 @@ class SequenceFeature:
                 except ValueError:
                     v = np.NaN
 
-                self._feature_dict[aa][p] = v
+                self._base_feature_dict[aa][p] = v
 
         # Get rid of features we're supposed to ignore
         if self._features_to_ignore != None:
-            keep = np.logical_not(np.in1d(self._features,self._features_to_ignore))
-            self._features = self._features[keep]
-        
-        if self._normalized:
+            keep = np.logical_not(np.in1d(self._base_features,self._features_to_ignore))
+            self._base_features = self._base_features[keep]
+       
+        self._num_base_features = len(self._features)
+
+        if self._normalize:
 
             # Grab current feature values
-            for p in self._features:
+            for p in self._base_features:
 
                 feature_values = []
-                for aa in self._feature_dict.keys():
-                    feature_values.append(self._feature_dict[aa][p])
+                for aa in self._base_feature_dict.keys():
+                    feature_values.append(self._base_feature_dict[aa][p])
                     
                 # Normalize to -1 to 1.  
                 feature_values = np.array(feature_values)
                 feature_values = feature_values/np.nanmax(np.abs(feature_values))
                     
-                for i, aa in enumerate(self._feature_dict.keys()):
-                    self._feature_dict[aa][p] = feature_values[i]
+                for i, aa in enumerate(self._base_feature_dict.keys()):
+                    self._base_feature_dict[aa][p] = feature_values[i]
 
-    
+        self._window_features = np.array(dtype=str)
+        self._use_sliding_windows = False 
+        if self._window_size > 0:
+
+            self._use_sliding_windows = True
+
+            self._window_features = []
+            num_windows = self._seq_length - self._window_size
+
+            for i in range(len(self._base_features)):
+                for j in range(num_windows):
+                    feature_names.apppend("{}_w{}".format(self._base_features[i],j))
+
+            self._window_features = np.array(window_features)      
+            
+        self._pattern_features = np.array(dtype=str)
+        if self._use_flip_pattern:
+            self._pattern_features = np.array(["{}_flip".format(f) for f in self._base_features])
+
+            
     def _calc_score(self,seq,**kwargs):
         """
         Dummy method. Should be defined for each scoring function.
@@ -121,10 +145,15 @@ class SequenceFeature:
             score = score - self._ref_score
             
         return score
-    
+   
+    @property
+    def num_features(self):
+        return len(self._base_features) + len(self._window_features) + len(self._pattern_features)
+ 
     @property
     def features(self):
-        return self._features
+
+        return np.concatenate((self._base_features,self._window_features,self._pattern_features)
 
 
 class SequenceCharge(SequenceFeature):
@@ -132,13 +161,13 @@ class SequenceCharge(SequenceFeature):
     Calculate the total charge on a sequence at a given pH.
     """
     
-    def __init__(self,data_file,window_size=None,pH=7.4,n_term=True,c_term=True):
+    def __init__(self,data_file,seq_length,window_size=None,pH=7.4,n_term=True,c_term=True):
         """
         Load in the data file and then determine various pH-dependent charge info. 
         """
         
         # Call the parent class
-        super(self.__class__,self).__init__(data_file,window_size,normalize=False)
+        super(self.__class__,self).__init__(data_file,seq_length,window_size,normalize=False)
 
         self._n_term = n_term
         self._c_term = c_term
@@ -190,13 +219,13 @@ class SequenceMain(SequenceFeature):
     Sequence features that are a simple sum across amino acids.
     """
     
-    def __init__(self,data_file,window_size=None,normalize=True,features_to_ignore=("pKa","charge")):
+    def __init__(self,data_file,seq_length,window_size=None,normalize=True,features_to_ignore=("pKa","charge")):
         """
         Load in each feature.
         """
         
         # Call the parent class
-        super(self.__class__,self).__init__(data_file,window_size,normalize,features_to_ignore)
+        super(self.__class__,self).__init__(data_file,seq_length,window_size,normalize,features_to_ignore)
         
     def _calc_score(self,seq):
         """
