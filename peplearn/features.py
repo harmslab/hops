@@ -13,7 +13,7 @@ class SequenceFeature:
     Base class for holding peptide sequence feature(s).
     """
     
-    def __init__(self,data_file,seq_length,normalize=True,window_size=1,use_flip_pattern=True,features_to_ignore=None):
+    def __init__(self,data_file,seq_length,normalize=True,use_sliding_windows=True,use_flip_pattern=True,features_to_ignore=None):
         """
         Initialize the class
         """
@@ -22,7 +22,7 @@ class SequenceFeature:
         self._seq_length = seq_length
         
         self._normalize = normalize
-        self._window_size = window_size
+        self._use_sliding_windows = use_sliding_windows
         self._use_flip_pattern = use_flip_pattern
         self._features_to_ignore = np.array(features_to_ignore)
 
@@ -95,20 +95,23 @@ class SequenceFeature:
                     self._base_feature_dict[aa][p] = feature_values[i]
 
         self._window_features = np.array(dtype=str)
-        self._use_sliding_windows = False 
-        if self._window_size > 0:
+        if self._use_sliding_windows:
 
-            self._use_sliding_windows = True
+            self._num_windows = np.sum(np.arange(self._seq_length,0,-1))
+            self._window_features = np.chararray((self._num_base_features,self._num_windows))
 
-            self._window_features = []
-            num_windows = self._seq_length - self._window_size
+            # Loop overall features
+            for i in range(self._num_base_features):
+        
+                # Loop over all possible window sizes
+                window_counter = 0
+                for j in range(self._seq_length):
 
-            for i in range(len(self._base_features)):
-                for j in range(num_windows):
-                    feature_names.apppend("{}_w{}".format(self._base_features[i],j))
+                    # Loop over all possible window start positions
+                    for k in range(self._seq_length - j):
+                        self._window_features[i,window_counter] = "{}_size{}_pos{}".format(self._base_features[i],(j+1),k)
+                        window_counter += 1
 
-            self._window_features = np.array(window_features)      
-            
         self._pattern_features = np.array(dtype=str)
         if self._use_flip_pattern:
             self._pattern_features = np.array(["{}_flip".format(f) for f in self._base_features])
@@ -153,7 +156,9 @@ class SequenceFeature:
     @property
     def features(self):
 
-        return np.concatenate((self._base_features,self._window_features,self._pattern_features)
+        return np.concatenate((self._base_features,
+                               self._window_features.reshape(self._num_base_features*self._num_windows),
+                               self._pattern_features)
 
 
 class SequenceCharge(SequenceFeature):
@@ -200,19 +205,28 @@ class SequenceCharge(SequenceFeature):
         Return the total charge.
         """
         
-        if self._window_size != None:
-            
-            L = len(seq)
-            if L > self._window_size:
-                
-                charge_window = []
-                for i in range(L-self._window_size):
-                    charge_window.append(sum(self.charge_dict[s] for s in seq[i:(i+self._window_size)]))
-                     
-                return np.array(charge_window)
+        total = np.array(sum(self.charge_dict[s] for s in seq) + self._term_offset)
+
+        windows = []
+        if self._use_sliding_windows:
+
+            # loop over possible sliding window lengths
+            for i in range(self._seq_length):
+         
+                # loop over possible start points for window 
+                for j in range(self._seq_length - i):
+                    windows.append(sum(self.charge_dict[s] for s in seq[j:(j+i)]))
         
-        
-        return np.array(sum(self.charge_dict[s] for s in seq) + self._term_offset)
+        flips = []
+        if self._use_flip_pattern:
+          
+            flips = [0.0] 
+            for i in range(1,self._seq_length):
+                if abs(self.charge_dict[seq[i]]) != abs(self.charge_dict[seq[i-1]]):
+                    flips[0] += 1
+      
+        return np.concatenate((total,np.array(windows),np.array(flips)))
+     
         
 class SequenceMain(SequenceFeature):
     """
@@ -232,24 +246,46 @@ class SequenceMain(SequenceFeature):
         Each feature is simply the sum of the features.
         """
         
-        if self._window_size != None:
+        if len(seq) != self._seq_length:
+            err = "Sequence length {} does not match length used to initialize class ({})\n".format(len(seq),self._seq_length)
+            raise ValueError(err)
 
-            L = len(seq)
-            if L > self._window_size:
-                
-                score_window = []
-                for i, p in enumerate(self._features):
-                    for j in range(L - self._window_size):
-                        score_window.append(0)
-                        for k in range(self._window_size):
-                            score_window[-1] += self._feature_dict[seq[j + k]][p]
-        
-            self._scores = np.array(score_window)
-            return self._scores
-        
-        self._scores = np.zeros(len(self._features),dtype=float)
+        totals = np.zeros(self._num_base_features,dtype=float)
         for s in seq:
             for i, p in enumerate(self._features):
-                self._scores[i] += self._feature_dict[s][p]
-        
-        return self._scores
+                totals[i] += self._feature_dict[s][p]
+
+        windows = np.array([])
+        if self._use_sliding_windows:
+
+            windows = np.zeros((self._num_base_features,self._num_windows),dtype=float)
+            for i, f in enumerate(self._base_features):
+            
+                # loop over possible sliding window lengths
+                window_counter = 0
+                for j in range(self._seq_length):
+         
+                    # loop over possible start points for window 
+                    for k in range(self._seq_length - j):
+                        windows[i,window_counter] = sum(self._feature_dict[s][f] for s in seq[k:(k+j)])
+                        windo_counter += 1
+
+        flip_scores = np.array([])
+        if self._use_flip_pattern:
+           
+            flip_scores = np.zeros(self._num_base_features,dtype=float) 
+            for i, f in enumerate(self._features):
+
+                f_over_seq = np.array([self._feature_dict[s][f] for s in seq])
+                f_flips = f_over_seq <= np.mean(f_over_seq)
+
+                # See if the element before each element in the vector is the same as the previous 
+                flip_scores[i] = np.sum(f_flips[1:self._seq_length] == f_flips[0:(self._seq_length-1)])/(self._seq_length/2)
+
+            scores = np.concatenate(scores,flip_scores)
+
+       
+        out = np.concatenate(totals,windows,flip_scores)
+
+        return out
+ 
