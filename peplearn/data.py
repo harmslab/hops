@@ -39,13 +39,9 @@ class MachineLearnerData:
         Calculate features using a seq_feature_instance and append to the total feature set.
         """
        
-        num_features = len(seq_feature_instance.features)
-        if seq_feature_instance._window_size != None:
-            scalar = len(self._sequences[0]) - seq_feature_instance._window_size
-            num_features = num_features*scalar
- 
-        new_features = np.zeros((len(self._raw_values),num_features),dtype=float)
-        
+        new_features = np.zeros((len(self._raw_values),seq_feature_instance.num_features),
+                                dtype=float)
+       
         for i, s in enumerate(self._sequences):
             new_features[i,:] = seq_feature_instance.score(s)
 
@@ -260,4 +256,7 @@ class MachineLearnerData:
         
         return self.errors[0:self._test_length]
     
-
+    @property
+    def feature_names(self):
+        
+        return self._feature_names
