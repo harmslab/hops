@@ -11,7 +11,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 def correlation(ml_data,ml_machine,pdf_file=None,max_value=12):
 
-    if pdf_file != None:
+    if pdf_file is not None:
         pdf = PdfPages(pdf_file)
     
     plt.rcParams.update({'font.size': 20})
@@ -45,7 +45,7 @@ def correlation(ml_data,ml_machine,pdf_file=None,max_value=12):
     plt.xlabel("measured value")
     plt.ylabel("predicted value")
     
-    if pdf_file != None:
+    if pdf_file is not None:
         pdf.savefig()
         pdf.close()
 

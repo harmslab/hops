@@ -27,11 +27,11 @@ class MachineLearnerData:
         training.
         """
         
-        if test_size != None:
+        if test_size is not None:
             self._test_size = test_size
         
         np.random.shuffle(self._indexes)
-        self._test_length = np.floor(len(self._indexes)*self._test_size)
+        self._test_length = int(np.floor(len(self._indexes)*self._test_size))
         
         
     def add_feature(self,seq_feature_instance):
@@ -70,7 +70,7 @@ class MachineLearnerData:
                 col = l.split()
 
                 sequence = col[0].strip()
-                value = float(col[1])
+                value = float(col[1]) 
 
                 try:
                     value_err = float(col[2])
@@ -85,6 +85,11 @@ class MachineLearnerData:
         
         self._raw_values = np.array((raw_value_list,raw_err_list),dtype=float)
         self._raw_values = self._raw_values.T
+
+        # Add noise to the measured values to prevent numerical errors downstream
+        # if two values happen to be identical
+        noise = np.random.normal(0,np.std(self._raw_values[:,0])/1000,len(self._raw_values)) 
+        self._raw_values[:,0] = self._raw_values[:,0] + noise
      
         self._values = np.copy(self._raw_values)
         self._indexes = np.arange(len(self._raw_values))
@@ -108,7 +113,7 @@ class MachineLearnerData:
                       "==":operator.eq,
                       "!=":operator.ne}
         
-        if cutoff != None:
+        if cutoff is not None:
             f = filter_ops[logic](self.values,cutoff)
             self._indexes = self._indexes[f]
                                               
@@ -245,7 +250,7 @@ class MachineLearnerData:
         """
         Return values for training set.
         """
-        
+
         return self.values[self._test_length:]
     
     @property

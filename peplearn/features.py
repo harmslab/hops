@@ -60,7 +60,7 @@ class SequenceFeature:
 
             for i, p in enumerate(self._base_features):
 
-                if self._features_to_ignore != None:
+                if self._features_to_ignore is not None:
                     if p in self._features_to_ignore:
                         continue
 
@@ -72,7 +72,7 @@ class SequenceFeature:
                 self._base_feature_dict[aa][p] = v
 
         # Get rid of features we're supposed to ignore
-        if self._features_to_ignore != None:
+        if self._features_to_ignore is not None:
             keep = np.logical_not(np.in1d(self._base_features,self._features_to_ignore))
             self._base_features = self._base_features[keep]
  
