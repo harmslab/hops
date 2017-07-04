@@ -6,27 +6,31 @@ for machine learning of peptide classes.
 __author__ = "Michael J. Harms"
 __date__ = "2016-04-23"
 
-from .base import SequenceFeature
+from .base import Features
 import localcider
 import numpy as np
 
-class SequenceCider(SequenceFeature):
+class CiderFeatures(Features):
     """
     Calculate the total charge on a sequence at a given pH.
     """
-    
-    def __init__(self,data_file,seq_length,
-                 normalize=True,use_sliding_windows=True,use_flip_pattern=True):
+
+    def __init__(self,seq_length=12,
+                      use_sliding_windows=True,
+                      features_to_ignore=None):
         """
-        Load in the data file and then determine various pH-dependent charge info. 
+        Initialize the class
         """
         
-        # Call the parent class
-        super(self.__class__,self).__init__(data_file,seq_length,
-                                            normalize=normalize,
-                                            use_sliding_windows=use_sliding_windows,
-                                            use_flip_pattern=use_flip_pattern)
+        self._seq_length = seq_length
+        self._normalize = False
+        self._use_sliding_windows = use_sliding_windows
+        self._use_flip_pattern = False
+        self._features_to_ignore = np.array(features_to_ignore)
 
+        self._compiled = False             
+        self._ref_loaded = False
+    
         self._base_features = ["cider_FCR",
                                "cider_FER",
                                "cider_FPPII_chain",
@@ -56,28 +60,8 @@ class SequenceCider(SequenceFeature):
                                "cider_sigma",
                                "cider_uverskyHydropathy"]
 
-        self._num_base_features = len(self._base_features)
-
-        if self._use_flip_pattern:
-            self._pattern_features = np.array()
-
-        if self._use_sliding_windows:
-
-            self._num_windows = np.sum(np.arange(self._seq_length,0,-1))
-
-            # Loop overall features
-            window_features = []
-            for i in range(self._num_base_features):
-        
-                # Loop over all possible window sizes
-                window_features.append([])
-                for j in range(self._seq_length):
-
-                    # Loop over all possible window start positions
-                    for k in range(self._seq_length - j):
-                        window_features[-1].append("{}_size{}_pos{}".format(self._base_features[i],(j+1),k))
-
-            self._window_features = np.array(window_features)
+        self._base_feature_dict = {f:0.0 for f in self._base_features}
+        self._compile_features()
     
     def _calc_score(self,seq):
         """
@@ -102,7 +86,44 @@ class SequenceCider(SequenceFeature):
             pass
           
         return total
-     
+    
+    def _calc_score(self,seq):
+        """
+        Each feature is simply the sum of the features across sites.
+        """
+
+        seq = np.array(list(seq))
+
+        if len(seq) != self._seq_length:
+            err = "Sequence length {} does not match length used to initialize class ({})\n".format(len(seq),self._seq_length)
+            raise ValueError(err)
+
+        # Sliding windows
+        if self._use_sliding_windows:
+            window_features = np.zeros((self._num_windows,self._num_base_features),dtype=float)
+        else:
+            window_features = np.zeros(0,dtype=float)
+      
+        # Flip pattern 
+        if self._use_flip_pattern: 
+            flip_features = np.zeros(self._num_base_features,dtype=float)
+        else:
+            flip_features = np.zeros(0,dtype=float)
+
+        # Grab parametres for total sequence
+        totals = self._single_seq_score("".join(seq)) 
+
+        # Do sliding window calculation
+        for i in range(self._num_windows):
+            new_seq = "".join(seq[self._window_masks[i]])
+            window_features[i,:] = self._single_seq_score(new_seq)
+    
+        # Transpose matrix so its in the same basic form as other calcs
+        if self._use_sliding_windows:
+            window_features = window_features.T 
+           
+        return np.concatenate((totals,np.ravel(window_features),flip_features))
+        
     def _single_seq_score(self,seq):        
         """
         Return a list of cider calculated values for seq.

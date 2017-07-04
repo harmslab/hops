@@ -8,112 +8,224 @@ __date__ = "2016-04-23"
 
 import numpy as np
 
-class SequenceFeature:
+import json, os
+
+class Features:
     """
     Base class for holding peptide sequence feature(s).
     """
     
-    def __init__(self,data_file,seq_length,normalize=True,use_sliding_windows=True,use_flip_pattern=True,features_to_ignore=None):
+    def __init__(self,data_files=None,
+                      seq_length=12,
+                      normalize=True,
+                      use_sliding_windows=True,
+                      use_flip_pattern=True,
+                      features_to_ignore=None):
         """
         Initialize the class
         """
         
-        self._data_file = data_file
+        self._data_files = data_files
+
         self._seq_length = seq_length
-        
         self._normalize = normalize
         self._use_sliding_windows = use_sliding_windows
         self._use_flip_pattern = use_flip_pattern
         self._features_to_ignore = np.array(features_to_ignore)
 
-        self._read_aa_data_file()
-        
+        self._compiled = False             
         self._ref_loaded = False
+    
+        self._base_features = []
+        self._base_feature_dict = {}
+
+        # If the user specifies data files...
+        if self._data_files is not None:
+            if type(self._data_files) == str:
+                data_files = [data_files]
+
+            for d in self._data_files:
+                if d[-4:] == ".csv":
+                    self._read_aa_data_file_csv(d)
+                elif d[-5:] == ".json":
+                    self._read_aa_data_file_json(d)
+                else:
+                    err = "Data file type for {} not recongized. should be csv or json\n".format(d)
+                    raise ValueError(err) 
+
+        # Otherwise, use the built in data files
+        else:
+            data_dir = os.path.dirname(os.path.realpath(__file__))
+            data_dir = os.path.join(data_dir,"data")
+            json_files = [f for f in os.listdir(data_dir) if f[-5:] == ".json"]
+            self._data_files = [os.path.join(data_dir,f) for f in json_files]
+            for d in self._data_files:
+                self._read_aa_data_file_json(d)
+
+        self._compile_features()
+
+    def _read_aa_data_file_json(self,data_file):
+        """
+        Parse a json file that has the form:
+
+        {
+            "feature_name_1": {
+                "values": {"A":1.0,
+                           "C":0.0,
+                            ...}
+                },
+            "feature_name_2": {
+                "values": {"A":0.0,
+                           "C":1.0,
+                            ...}
+                },
+        }
+        """
+
+        if self._compiled:
+            err = "You cannot add more features after compiling\n"
+            raise ValueError(err) 
+
+        data = json.load(open(data_file,'r'))
+
+        for k in data.keys():
+
+            # Make sure we haven't already seen this feature    
+            try:
+                self._base_feature_dict[k]
+                err = "Feature name {} duplicated".format(k)
+                raise ValueError(err)
+            except:
+                pass
+
+            # Populate base_feature_dict
+            self._base_feature_dict[k] = {}
+            for aa in data[k]["values"].keys():
+
+                if data[k]["values"][aa] == "NA":
+                    v = np.NaN
+                else:
+                    v = data[k]["values"][aa] 
+
+                self._base_feature_dict[k][aa] = v
 
 
-    def _read_aa_data_file(self):
+    def _read_aa_data_file_csv(self,data_file):
         """
         Read in a data file in whitespace-delimited format.  The top row is assumed to be
-        the name of the feature.  Empty lines and lines beginning with # are ignored.  If
-        normalize=True, each feature is normalized such that the maximum magnitude value
-        is set to one.  For example, a feature ranging from -100 to 10 will be rescaled 
-        from -1 to 0.1; a feature ranging from 0 to 100 will be rescaled from 0 to 1.0.
+        the name of the feature.  Empty lines and lines beginning with # are ignored.  
         """
-        
+       
+        if self._compiled:
+            err = "You cannot add more features after compiling\n"
+            raise ValueError(err) 
+ 
         # Read file
-        f = open(self._data_file,"r")
+        f = open(data_file,"r")
         lines = f.readlines()
         f.close()
 
         lines = [l for l in lines if l.strip() != "" and not l.startswith("#")]
         
         # Grab top line for each feature
-        self._base_features = np.array(lines[0].split())
+        base_features = lines[0].split()
+
+        for k in base_features:
+
+            # Make sure we haven't already seen this feature    
+            try:
+                self._base_feature_dict[k]
+                err = "Feature name {} duplicated".format(k)
+                raise ValueError(err)
+            except:
+                pass
+
+            self._base_feature_dict[k] = {a:0.0 for a in "ACDEFGHIKLMNPQRSTVWY"}
 
         # Go through lines, populating features for each amino acid
-        self._base_feature_dict = {}
         for l in lines[1:]:
             col = l.split()
 
             aa = col[0]
-            self._base_feature_dict[aa] = {}
-
-            for i, p in enumerate(self._base_features):
-
-                if self._features_to_ignore is not None:
-                    if p in self._features_to_ignore:
-                        continue
+            for i, k in enumerate(base_features):
 
                 try:
                     v = float(col[i+1])
                 except ValueError:
                     v = np.NaN
 
-                self._base_feature_dict[aa][p] = v
+                self._base_feature_dict[k][aa] = v
+
+    def _compile_features(self):
+
+        # You can only compile once
+        if self._compiled:
+            return
+        self._compiled = True       
+ 
+        # Get base features
+        self._base_features = list(self._base_feature_dict.keys())
+        self._base_features.sort()
+        self._base_features = np.array(self._base_features)
 
         # Get rid of features we're supposed to ignore
         if self._features_to_ignore is not None:
             keep = np.logical_not(np.in1d(self._base_features,self._features_to_ignore))
             self._base_features = self._base_features[keep]
- 
+
+        # Record the number of base features
         self._num_base_features = len(self._base_features)
 
+        # Normalize?
         if self._normalize:
 
             # Grab current feature values
-            for p in self._base_features:
+            for k in self._base_features:
 
                 feature_values = []
-                for aa in self._base_feature_dict.keys():
-                    feature_values.append(self._base_feature_dict[aa][p])
+                for aa in self._base_feature_dict[k].keys():
+                    feature_values.append(self._base_feature_dict[k][aa])
                     
                 # Normalize to -1 to 1.  
                 feature_values = np.array(feature_values)
                 feature_values = feature_values/np.nanmax(np.abs(feature_values))
                     
-                for i, aa in enumerate(self._base_feature_dict.keys()):
-                    self._base_feature_dict[aa][p] = feature_values[i]
+                for i, aa in enumerate(self._base_feature_dict[k].keys()):
+                    self._base_feature_dict[k][aa] = feature_values[i]
 
+        # Deal with sliding windows
         if self._use_sliding_windows:
 
-            self._num_windows = np.sum(np.arange(self._seq_length,0,-1))
+            # Create masks for running sliding window calculation
+            self._window_masks = []
+            self._window_addresses = []
+            for length in range(1,self._seq_length):
+                for i in range(self._seq_length - length + 1):
+                    window = np.zeros(self._seq_length,dtype=bool)
+                    window[i:(i+length)] = True
 
-            # Loop overall features
-            window_features = []
-            for i in range(self._num_base_features):
-        
-                # Loop over all possible window sizes
-                window_features.append([])
-                for j in range(self._seq_length):
+                    self._window_masks.append(window)
+                    self._window_addresses.append("pos{}_length{}".format(i,length))
 
-                    # Loop over all possible window start positions
-                    for k in range(self._seq_length - j):
-                        window_features[-1].append("{}_size{}_pos{}".format(self._base_features[i],(j+1),k))
+            # Create list of names of sliding window features
+            self._window_features = []
+            for k in self._base_features:
+                for w in self._window_addresses:
+                    self._window_features.append("{}_{}".format(k,w))
 
-            self._window_features = np.array(window_features)
+            self._num_windows = len(self._window_masks)
+            self._window_masks = np.array(self._window_masks)
+            self._window_addresses = np.array(self._window_addresses)
+            self._window_features = np.array(self._window_features)
+        else:
+            self._num_windows = 0
+            self._window_features = np.array([],dtype=str)
 
+        # Whether or not to do flip patterns
         if self._use_flip_pattern:
             self._pattern_features = np.array(["{}_flip".format(f) for f in self._base_features])
+        else:
+            self._pattern_features = np.array([],dtype=str)
 
             
     def _calc_score(self,seq,**kwargs):
@@ -151,34 +263,21 @@ class SequenceFeature:
     @property
     def num_features(self):
 
-        if self._use_sliding_windows:
-            if self._use_flip_pattern:
-                return len(self._base_features) + len(np.ravel(self._window_features)) + len(self._pattern_features)
-            else:
-                return len(self._base_features) + len(np.ravel(self._window_features))
-        else:
-            if self._use_flip_pattern:            
-                return len(self._base_features) + len(self._pattern_features)
- 
-        return len(self._base_features)
+        # No features if not yet compiled
+        if not self._compiled:
+            return 0
 
- 
+        return len(self._base_features) + len(self._window_features) + len(self._pattern_features)
+
     @property
     def features(self):
 
-        if self._use_sliding_windows:
-            if self._use_flip_pattern:
-                return np.concatenate((self._base_features,
-                                       np.ravel(self._window_features),
-                                       self._pattern_features))
-            else:
-                return np.concatenate((self._base_features,
-                                       np.ravel(self._window_features)))
-        else:
-            if self._use_flip_pattern:            
-                return np.concatenate((self._base_features,
-                                       self._pattern_features))
+        # No features if not yet compiled
+        if not self._compiled:
+            return None
 
-        return self._base_features
- 
+        return np.concatenate((self._base_features,
+                               self._window_features,
+                               self._pattern_features))
+
 

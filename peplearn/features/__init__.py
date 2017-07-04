@@ -1,7 +1,6 @@
 
-__all__ = ["base","charge","cider","main"]
+__all__ = ["base","cider","simple"]
 
-from .main import SequenceMain as SequenceMain
-from .charge import SequenceCharge as SequenceCharge
-from .cider import SequenceCider as SequenceCider
+from .simple import SimpleFeatures as SimpleFeatures
+from .cider import CiderFeatures as CiderFeatures
 

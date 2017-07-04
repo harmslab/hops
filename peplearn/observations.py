@@ -1,20 +1,20 @@
 import numpy as np
 import operator
 
-class MachineLearnerData:
+class Observations:
     """
     Class for creating and holding machine learning training/test sets.
     """
     
-    def __init__(self,input_file,test_size=0.1):
+    def __init__(self,observation_file,test_size=0.1):
         """
         Initialize the class.
         """
         
-        self._input_file = input_file
+        self._observation_file = observation_file
         self._test_size = test_size
         
-        # soad in all of the observations
+        # load in all of the observations
         self._load_observations()
         
         # initial features.  everyone gets a 0
@@ -61,7 +61,7 @@ class MachineLearnerData:
         seq_list = []
         raw_value_list = []
         raw_err_list = []
-        with open(self._input_file) as f:
+        with open(self._observation_file) as f:
             for l in f:
             
                 if l.strip() == "" or l.startswith("#"):
