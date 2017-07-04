@@ -15,7 +15,7 @@ def correlation(ml_data,ml_machine,pdf_file=None,max_value=12):
         pdf = PdfPages(pdf_file)
     
     plt.rcParams.update({'font.size': 20})
-    plt.figure(figsize=(7, 7)) 
+    fig = plt.figure(figsize=(7, 7)) 
     
     # Plot sundry dashed lines
     plt.plot(np.array([-1*max_value,max_value]),np.array([-1*max_value,max_value]),'k--')
@@ -49,4 +49,4 @@ def correlation(ml_data,ml_machine,pdf_file=None,max_value=12):
         pdf.savefig()
         pdf.close()
 
-
+    return fig
