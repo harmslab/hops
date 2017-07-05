@@ -18,11 +18,23 @@ class Features:
     def __init__(self,data_files=None,
                       seq_length=12,
                       normalize=True,
-                      use_sliding_windows=True,
+                      use_sliding_windows=0,
                       use_flip_pattern=True,
                       features_to_ignore=None):
         """
         Initialize the class
+
+        Parameters:
+        -----------
+    
+        data_files: list of json and/or csv files with information about amino
+                    acids.  If None, the json files in features/data/*.json are
+                    used.
+        seq_length: (int) length of the sequence you'll use for calculations
+        normalize: (bool) whether or not to normalize the data
+        use_sliding_windows: (int) max size of sliding windows to use
+        use_flip_pattern: (bool) measure pattern flipping 
+        features_to_ignore: list of features to ignore
         """
         
         self._data_files = data_files
@@ -80,6 +92,8 @@ class Features:
                             ...}
                 },
         }
+    
+        Missing values are assigned the average of the non-missing values.
         """
 
         if self._compiled:
@@ -103,7 +117,9 @@ class Features:
             for aa in data[k]["values"].keys():
 
                 if data[k]["values"][aa] == "NA":
-                    v = np.NaN
+                    val = list(data[k]["values"].values())
+                    val = [v for v in val if v != "NA"]
+                    v = np.mean(val)
                 else:
                     v = data[k]["values"][aa] 
 
@@ -157,6 +173,9 @@ class Features:
                 self._base_feature_dict[k][aa] = v
 
     def _compile_features(self):
+        """
+        Compile all of the features into a useful calculation.
+        """
 
         # You can only compile once
         if self._compiled:
@@ -194,12 +213,12 @@ class Features:
                     self._base_feature_dict[k][aa] = feature_values[i]
 
         # Deal with sliding windows
-        if self._use_sliding_windows:
+        if self._use_sliding_windows > 0:
 
             # Create masks for running sliding window calculation
             self._window_masks = []
             self._window_addresses = []
-            for length in range(1,self._seq_length):
+            for length in range(1,1 + self._use_sliding_windows):
                 for i in range(self._seq_length - length + 1):
                     window = np.zeros(self._seq_length,dtype=bool)
                     window[i:(i+length)] = True
@@ -227,7 +246,6 @@ class Features:
         else:
             self._pattern_features = np.array([],dtype=str)
 
-            
     def _calc_score(self,seq,**kwargs):
         """
         Dummy method. Should be defined for each scoring function.

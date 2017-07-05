@@ -21,7 +21,7 @@ class SimpleFeatures(Features):
         totals = np.zeros(self._num_base_features,dtype=float)
 
         # Sliding windows
-        if self._use_sliding_windows:
+        if self._use_sliding_windows > 0:
             window_features = np.zeros((self._num_base_features,self._num_windows),dtype=float)
         else:
             window_features = np.zeros(0,dtype=float)
@@ -43,7 +43,7 @@ class SimpleFeatures(Features):
             totals[i] = np.sum(value_vec)
             
             # Create vector of sliding windows of this feature
-            if self._use_sliding_windows:
+            if self._use_sliding_windows > 0:
                 for j in range(len(self._window_masks)):
                     window_features[i,j] = np.sum(value_vec[self._window_masks[j,:]])
 

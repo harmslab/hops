@@ -1,6 +1,8 @@
 import numpy as np
 import operator
 
+from multiprocessing import Process, Queue
+
 class Observations:
     """
     Class for creating and holding machine learning training/test sets.
@@ -10,7 +12,7 @@ class Observations:
         """
         Initialize the class.
         """
-        
+       
         self._observation_file = observation_file
         self._test_size = test_size
         
@@ -20,6 +22,7 @@ class Observations:
         # initial features.  everyone gets a 0
         self._features = np.zeros((len(self._raw_values),1),dtype=float)
         self._feature_names = np.array(["dummy"])
+        self._features_engines = []
         
     def new_test_set(self,test_size=None):
         """
@@ -34,21 +37,67 @@ class Observations:
         self._test_length = int(np.floor(len(self._indexes)*self._test_size))
         
         
-    def add_feature(self,seq_feature_instance):
+    def add_features(self,features_instance):
         """
-        Calculate features using a seq_feature_instance and append to the total feature set.
+        Calculate features using a features_instance and append to the total feature set.
         """
-       
-        new_features = np.zeros((len(self._raw_values),seq_feature_instance.num_features),
-                                dtype=float)
-       
-        for i, s in enumerate(self._sequences):
-            new_features[i,:] = seq_feature_instance.score(s)
+      
+        self._features_engines.append(features_instance)
 
-        self._feature_names = np.concatenate((self._feature_names,seq_feature_instance.features))
-        self._features = np.hstack((self._features,new_features))
-                
-    
+
+    def _calc_stuff(self,thread_number,queue):
+
+        j = self._per_thread_sets[thread_number]
+        k = self._per_thread_sets[thread_number + 1]
+
+        out = []
+        for i in range(j,k):
+            tmp = []
+            for f in self._feature_functions:
+                tmp.append(f(self._sequences[i]))
+            out.append(np.concatenate(tmp))
+
+        queue.put((thread_number,out))
+
+    def calc_features(self,num_threads=1):
+        """
+        Calculate the features for every observation using the appended Features
+        instances. 
+        """
+
+        # Create a list of feature functions... 
+        feature_names = []
+        self._feature_functions = [] 
+        num_features = 0
+        for e in self._features_engines:
+            num_features += e.num_features
+            feature_names.append(e.features)
+            self._feature_functions.append(e.score)
+        
+        self._feature_names = np.concatenate(feature_names)
+        self._features = np.zeros((len(self._raw_values),num_features),dtype=float)
+ 
+        per_thread = len(self._raw_values)//num_threads
+        self._per_thread_sets = [(i+1)*per_thread for i in range(num_threads)]
+        self._per_thread_sets.insert(0,0)
+        self._per_thread_sets[-1] = len(self._raw_values)
+
+        queue = Queue()
+
+        proc_list = []
+        for i in range(num_threads):
+            proc_list.append(Process(target=self._calc_stuff,args=(i,queue)))
+            proc_list[-1].start()
+
+        out = []
+        for p in proc_list:
+            out.append(queue.get())
+            #p.join()
+
+        #out.sort()
+        for o in out:
+            self._features[self._per_thread_sets[o[0]]:self._per_thread_sets[o[0]+1],:] = o[1]
+ 
     def _load_observations(self):
         """
         Load in a file of observations.  Expected to have format:
@@ -265,3 +314,5 @@ class Observations:
     def feature_names(self):
         
         return self._feature_names
+
+
