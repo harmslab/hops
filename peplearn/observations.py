@@ -2,6 +2,10 @@ import numpy as np
 import operator
 
 from multiprocessing import Process, Queue
+import queue as queue_module
+import time
+
+import sys
 
 class Observations:
     """
@@ -45,26 +49,29 @@ class Observations:
         self._features_engines.append(features_instance)
 
 
-    def _calc_stuff(self,thread_number,queue):
+    def _calc_features_on_thread(self,first_seq,last_seq,queue):
 
-        j = self._per_thread_sets[thread_number]
-        k = self._per_thread_sets[thread_number + 1]
-
+        # Create a 1D features array for each sequence.  Put those into a list
+        # and put outo the queue.
         out = []
-        for i in range(j,k):
+        for i in range(first_seq,last_seq):
             tmp = []
             for f in self._feature_functions:
                 tmp.append(f(self._sequences[i]))
             out.append(np.concatenate(tmp))
 
-        queue.put((thread_number,out))
+        queue.put((first_seq,last_seq,out))
 
-    def calc_features(self,num_threads=1):
+
+    def calc_features(self,num_threads=1,block_size=3000):
         """
         Calculate the features for every observation using the appended Features
         instances. 
-        """
 
+        num_threads: number of threads to run on
+        block_size: number of seqeuences to put on a single process
+        """
+    
         # Create a list of feature functions... 
         feature_names = []
         self._feature_functions = [] 
@@ -73,30 +80,82 @@ class Observations:
             num_features += e.num_features
             feature_names.append(e.features)
             self._feature_functions.append(e.score)
-        
+
+        # Create a compiled list of feature names
         self._feature_names = np.concatenate(feature_names)
-        self._features = np.zeros((len(self._raw_values),num_features),dtype=float)
- 
-        per_thread = len(self._raw_values)//num_threads
-        self._per_thread_sets = [(i+1)*per_thread for i in range(num_threads)]
-        self._per_thread_sets.insert(0,0)
-        self._per_thread_sets[-1] = len(self._raw_values)
+       
+        # If enough threads are specified that only a few threads would start, 
+        # make the block size smaller 
+        if len(self._raw_values)//num_threads < block_size:
+            block_size = len(self._raw_values)//num_threads + 20
+        
 
-        queue = Queue()
+        # Split up the observations across threads
+        block_edges = []
+        for i in range(0,len(self._raw_values),block_size):
+            block_edges.append(i)
+        block_edges.append(len(self._raw_values) - 1)
 
+        # Start a process for each thread
         proc_list = []
-        for i in range(num_threads):
-            proc_list.append(Process(target=self._calc_stuff,args=(i,queue)))
-            proc_list[-1].start()
-
+        queue_list = []
         out = []
-        for p in proc_list:
-            out.append(queue.get())
-            #p.join()
 
-        #out.sort()
+        # Go through each sequence
+        for i in range(len(block_edges)-1):
+            
+            first_seq = block_edges[i]
+            last_seq =  block_edges[i+1]
+
+            queue_list.append(Queue())
+            proc_list.append(Process(target=self._calc_features_on_thread,
+                                     args=(first_seq,last_seq,queue_list[-1])))
+            proc_list[-1].start()
+           
+            # If we've capped our number of threads, wait until one of the
+            # processes finishes to move on 
+            if (len(queue_list) == num_threads) or (i == len(block_edges) - 2):
+
+                waiting = True
+                while waiting:
+
+                    # Go through queues
+                    for j, q in enumerate(queue_list):
+                      
+                        # Try to get output on queue.  If output is there, get 
+                        # the output and then remove the associated process and
+                        # queue 
+                        try:
+                            out.append(q.get(block=True,timeout=0.1))
+                            p = proc_list.pop(j)
+                            queue_list.pop(j)
+
+                            waiting = False
+                            break
+
+                        except queue_module.Empty:
+                            pass
+
+                    # If we're on the last block, wait until the queue is
+                    # completely empty before proceeding
+                    if len(queue_list) != 0 and i == (len(block_edges) - 2):
+                        waiting = True
+ 
+
+
+        print(len(proc_list),len(queue_list))
+        # Make sure the processes are all done before proceeding
+        #for p in proc_list:
+        #    p.join()
+                
+        # Get any remaining job results
+        #for q in queue_list:
+        #    out.append(q.get())
+
+        # Load results into self._features
+        self._features = np.zeros((len(self._raw_values),num_features),dtype=float)
         for o in out:
-            self._features[self._per_thread_sets[o[0]]:self._per_thread_sets[o[0]+1],:] = o[1]
+            self._features[o[0]:o[1],:] = o[2]
  
     def _load_observations(self):
         """

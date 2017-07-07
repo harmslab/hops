@@ -12,7 +12,7 @@ import numpy as np
 
 class CiderFeatures(Features):
     """
-    Calculate the total charge on a sequence at a given pH.
+    Calculate a bunch of CIDER parameters on the sequence.
     """
 
     def __init__(self,seq_length=12,
@@ -20,11 +20,16 @@ class CiderFeatures(Features):
                       features_to_ignore=None):
         """
         Initialize the class
+
+        Parameters:
+        -----------
+
+        seq_length: length of peptide sequences being studied
         """
         
         self._seq_length = seq_length
         self._normalize = False
-        self._use_sliding_windows = use_sliding_windows
+        self._use_sliding_windows = (use_sliding_windows != 0)
         self._use_flip_pattern = False
         self._features_to_ignore = np.array(features_to_ignore)
 
