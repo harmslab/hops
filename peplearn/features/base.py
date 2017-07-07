@@ -57,6 +57,7 @@ class Features:
                 data_files = [data_files]
 
             for d in self._data_files:
+                print(d)
                 if d[-4:] == ".csv":
                     self._read_aa_data_file_csv(d)
                 elif d[-5:] == ".json":
