@@ -17,7 +17,6 @@ class Features:
     
     def __init__(self,data_files=None,
                       seq_length=12,
-                      normalize=True,
                       use_sliding_windows=0,
                       use_flip_pattern=True,
                       features_to_ignore=None):
@@ -31,7 +30,6 @@ class Features:
                     acids.  If None, the json files in features/data/*.json are
                     used.
         seq_length: (int) length of the sequence you'll use for calculations
-        normalize: (bool) whether or not to normalize the data
         use_sliding_windows: (int) max size of sliding windows to use
         use_flip_pattern: (bool) measure pattern flipping 
         features_to_ignore: list of features to ignore
@@ -40,7 +38,6 @@ class Features:
         self._data_files = data_files
 
         self._seq_length = seq_length
-        self._normalize = normalize
         self._use_sliding_windows = use_sliding_windows
         self._use_flip_pattern = use_flip_pattern
         self._features_to_ignore = np.array(features_to_ignore)
@@ -195,23 +192,6 @@ class Features:
 
         # Record the number of base features
         self._num_base_features = len(self._base_features)
-
-        # Normalize?
-        if self._normalize:
-
-            # Grab current feature values
-            for k in self._base_features:
-
-                feature_values = []
-                for aa in self._base_feature_dict[k].keys():
-                    feature_values.append(self._base_feature_dict[k][aa])
-                    
-                # Normalize to -1 to 1.  
-                feature_values = np.array(feature_values)
-                feature_values = feature_values/np.nanmax(np.abs(feature_values))
-                    
-                for i, aa in enumerate(self._base_feature_dict[k].keys()):
-                    self._base_feature_dict[k][aa] = feature_values[i]
 
         # Deal with sliding windows
         if self._use_sliding_windows > 0:

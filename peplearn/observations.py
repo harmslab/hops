@@ -12,14 +12,20 @@ class Observations:
     Class for creating and holding machine learning training/test sets.
     """
     
-    def __init__(self,observation_file,test_size=0.1):
+    def __init__(self,observation_file,test_size=0.1,value_type=None):
         """
         Initialize the class.
+
+        observation_file: text file with observations. 
+        test_size:  fraction of data to place in the test set
+        value_type: type of value in the dataset.  If None, this is determined
+                    from the file itself.
         """
        
         self._observation_file = observation_file
         self._test_size = test_size
-        
+        self._value_type = value_type 
+ 
         # load in all of the observations
         self._load_observations()
         
@@ -50,9 +56,13 @@ class Observations:
 
 
     def _calc_features_on_thread(self,first_seq,last_seq,queue):
+        """
+        Calculate features on a set of sequences on its own thread.
 
-        # Create a 1D features array for each sequence.  Put those into a list
-        # and put outo the queue.
+        Create a 1D features array for each sequence.  Put those into a list
+        and put outo the queue.
+        """
+
         out = []
         for i in range(first_seq,last_seq):
             tmp = []
@@ -86,15 +96,14 @@ class Observations:
        
         # If enough threads are specified that only a few threads would start, 
         # make the block size smaller 
-        if len(self._raw_values)//num_threads < block_size:
-            block_size = len(self._raw_values)//num_threads + 20
+        if len(self._sequences)//num_threads < block_size:
+            block_size = len(self._sequences)//num_threads + 20
         
-
-        # Split up the observations across threads
+        # Split squences in to blocks of block_size
         block_edges = []
-        for i in range(0,len(self._raw_values),block_size):
+        for i in range(0,len(self._sequences),block_size):
             block_edges.append(i)
-        block_edges.append(len(self._raw_values) - 1)
+        block_edges.append(len(self._sequences) - 1)
 
         # Start a process for each thread
         proc_list = []
@@ -141,34 +150,24 @@ class Observations:
                     if len(queue_list) != 0 and i == (len(block_edges) - 2):
                         waiting = True
  
-
-
-        print(len(proc_list),len(queue_list))
-        # Make sure the processes are all done before proceeding
-        #for p in proc_list:
-        #    p.join()
-                
-        # Get any remaining job results
-        #for q in queue_list:
-        #    out.append(q.get())
-
         # Load results into self._features
-        self._features = np.zeros((len(self._raw_values),num_features),dtype=float)
+        self._features = np.zeros((len(self._sequences),num_features),dtype=float)
         for o in out:
             self._features[o[0]:o[1],:] = o[2]
+
  
     def _load_observations(self):
         """
         Load in a file of observations.  Expected to have format:
         
-        SEQ VALUE [VALUE_ERROR]
+        SEQ VALUE [VALUE_WEIGHT]
         
         Blank lines and lines starting with # are ignored.
         """
 
         seq_list = []
         raw_value_list = []
-        raw_err_list = []
+        weight_list = []
         with open(self._observation_file) as f:
             for l in f:
             
@@ -178,28 +177,33 @@ class Observations:
                 col = l.split()
 
                 sequence = col[0].strip()
-                value = float(col[1]) 
+
+                # Figure out whether this data is type float, integer, or string
+                if self._value_type is None:
+                    try:
+                        v = float(col[1].strip())
+                        if v.is_integer():
+                            self._value_type = int  
+                        else:
+                            self._value_type = float
+                    except ValueError:
+                        self._value_type = str
+
+                raw_value = self._value_type(col[1].strip())
 
                 try:
-                    value_err = float(col[2])
+                    weight = float(col[2])
                 except (IndexError,ValueError):
-                    value_err = 1.0
+                    weight = 1.0
 
                 seq_list.append(sequence)
-                raw_value_list.append(value)
-                raw_err_list.append(value_err)
+                raw_value_list.append(raw_value)
+                weight_list.append(weight)
 
         self._sequences = np.array(seq_list)
-        
-        self._raw_values = np.array((raw_value_list,raw_err_list),dtype=float)
-        self._raw_values = self._raw_values.T
-
-        # Add noise to the measured values to prevent numerical errors downstream
-        # if two values happen to be identical
-        noise = np.random.normal(0,np.std(self._raw_values[:,0])/1000,len(self._raw_values)) 
-        self._raw_values[:,0] = self._raw_values[:,0] + noise
-     
-        self._values = np.copy(self._raw_values)
+       
+        self._raw_values = np.array(raw_value_list,dtype=self._value_type)
+        self._weights = np.array(weight_list,dtype=float)
         self._indexes = np.arange(len(self._raw_values))
         
         self.new_test_set()
@@ -226,6 +230,14 @@ class Observations:
             self._indexes = self._indexes[f]
                                               
             self.new_test_set()
+
+    def remove_filters(self):
+        """
+        Remove any filters that have been applied.
+        """          
+            
+        self._indexes = np.arange(len(self._raw_values))
+        self.new_test_set()
     
     def add_classes(self,breaks):
         """
@@ -238,33 +250,24 @@ class Observations:
         
         # Values below the first break        
         class_number = 0
-        first_class = self._raw_values[:,0] < breaks[0]
+        first_class = self._raw_values < breaks[0]
         if np.sum(first_class) > 0:
             classes[first_class] = class_number
             class_number += 1
             
         # Values between each break
         for i in range(len(breaks)-1):
-            c1 = self._raw_values[:,0] >= breaks[i]
-            c2 = self._raw_values[:,0] < breaks[i+1]
+            c1 = self._raw_values >= breaks[i]
+            c2 = self._raw_values < breaks[i+1]
             
             classes[c1*c2] = class_number
             class_number += 1
         
         # Values above the top break
-        last_class = self._raw_values[:,0] >= breaks[-1]
+        last_class = self._raw_values >= breaks[-1]
         classes[last_class] = class_number
         
-        self._values[:,0] = classes
-        self._values[:,1] = 1.0
-            
-    def remove_filters(self):
-        """
-        Remove any filters that have been applied.
-        """          
-            
-        self._indexes = np.arange(len(self._raw_values))
-        self.new_test_set()
+        self._values = classes
         
     def remove_classes(self):
         """
@@ -280,7 +283,6 @@ class Observations:
     
         return self._sequences[self._indexes]
     
-    
     @property
     def features(self):
         """
@@ -295,15 +297,15 @@ class Observations:
         Return all values, with appropriate cutoffs or class filters applied.
         """
         
-        return self._values[self._indexes,0]
+        return self._raw_values[self._indexes]
     
     @property
-    def errors(self):
+    def weights(self):
         """
-        Return all value errors, with appropriate cutoffs or class filters applied.
+        Return all value weights, with appropriate cutoffs or class filters applied.
         """
         
-        return self._values[self._indexes,1]
+        return self._weights[self._indexes]
             
     @property
     def test_sequences(self):
@@ -328,15 +330,15 @@ class Observations:
         """
         
         return self.values[0:self._test_length]    
-    
+
     @property
-    def training_errors(self):
+    def test_weights(self):
         """
-        Return errors for training set. 
+        Return weights for test set.
         """
         
-        return self.errors[self._test_length:]
-    
+        return self.weights[0:self._test_length]
+
     @property
     def training_sequences(self):
         """
@@ -360,17 +362,20 @@ class Observations:
         """
 
         return self.values[self._test_length:]
-    
+
     @property
-    def test_errors(self):
+    def training_weights(self):
         """
-        Return errors for test set.
+        Return weights for training set. 
         """
         
-        return self.errors[0:self._test_length]
+        return self.weights[self._test_length:]
     
     @property
     def feature_names(self):
+        """
+        Return names of all features.
+        """
         
         return self._feature_names
 
