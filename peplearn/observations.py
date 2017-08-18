@@ -3,7 +3,7 @@ import operator
 
 from multiprocessing import Process, Queue
 import queue as queue_module
-import time
+import time, copy
 
 import sys
 
@@ -33,6 +33,9 @@ class Observations:
         self._features = np.zeros((len(self._raw_values),1),dtype=float)
         self._feature_names = np.array(["dummy"])
         self._features_engines = []
+
+        # set initial breaks to None
+        self._breaks = None
         
     def new_test_set(self,test_size=None):
         """
@@ -205,7 +208,9 @@ class Observations:
         self._raw_values = np.array(raw_value_list,dtype=self._value_type)
         self._weights = np.array(weight_list,dtype=float)
         self._indexes = np.arange(len(self._raw_values))
-        
+       
+        self._values = np.copy(self._raw_values)
+     
         self.new_test_set()
         
     def add_cutoff_filter(self,logic=">=",cutoff=None):
@@ -246,25 +251,27 @@ class Observations:
         remove_classes.  
         """
 
+        self._breaks = copy.copy(breaks)
+
         classes = np.zeros(len(self._raw_values))
         
         # Values below the first break        
         class_number = 0
-        first_class = self._raw_values < breaks[0]
+        first_class = self._raw_values < self._breaks[0]
         if np.sum(first_class) > 0:
             classes[first_class] = class_number
             class_number += 1
             
         # Values between each break
-        for i in range(len(breaks)-1):
-            c1 = self._raw_values >= breaks[i]
-            c2 = self._raw_values < breaks[i+1]
+        for i in range(len(self._breaks)-1):
+            c1 = self._raw_values >= self._breaks[i]
+            c2 = self._raw_values < self._breaks[i+1]
             
             classes[c1*c2] = class_number
             class_number += 1
         
         # Values above the top break
-        last_class = self._raw_values >= breaks[-1]
+        last_class = self._raw_values >= self._breaks[-1]
         classes[last_class] = class_number
         
         self._values = classes
@@ -274,7 +281,19 @@ class Observations:
         Remove discrete class calls so values returns floats.
         """
         self._values = np.copy(self._raw_values)
+        self._breaks = None
+   
+    @property
+    def breaks(self):
+        """
+        Return breaks between classes.
+        """
+       
+        if not self._breaks is None:
+            return self._breaks
     
+        return None
+ 
     @property
     def sequences(self):
         """
@@ -297,7 +316,7 @@ class Observations:
         Return all values, with appropriate cutoffs or class filters applied.
         """
         
-        return self._raw_values[self._indexes]
+        return self._values[self._indexes]
     
     @property
     def weights(self):

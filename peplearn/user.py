@@ -94,7 +94,7 @@ class MachineLearner:
         else:
             err = "'weights' should be 'even' or 'file'.\n"
             raise ValueError(err)
-        
+       
         # Standardize the training features
         self._standardization_mean = np.mean(self._obs.training_features,0)
         self._training_features = self._obs.training_features - self._standardization_mean
