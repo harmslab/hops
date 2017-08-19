@@ -99,11 +99,15 @@ class MachineLearner:
         self._standardization_mean = np.mean(self._obs.training_features,0)
         self._training_features = self._obs.training_features - self._standardization_mean
 
-        self._standardization_scalar = 1/np.std(self._training_features,0)
+        self._standardization_scalar = np.std(self._training_features,0)
 
-        # If the standard deviation of the value is NaN, the value does not change
-        # across the training set.  Thus, set to zero to avoid numerical problems.
-        self._standardization_scalar[np.isinf(self._standardization_scalar)] = 0.0
+        # If the standard deviation of the feature is 0, set it to inf.  This
+        # will give the feature a final standard deviation of 0 --> meaning it
+        # does not contribute to the final fit.  This is good because a standard
+        # deviation of zero means the feature does not change across samples.
+        self._standardization_scalar[self._standardization_scalar == 0] = np.inf
+
+        self._standardization_scalar = 1.0/self._standardization_scalar
 
         self._training_features = self._training_features*self._standardization_scalar
         self._test_features = (self._obs.test_features -  self._standardization_mean)*self._standardization_scalar
@@ -130,9 +134,7 @@ class MachineLearner:
         Returns a dictionary of predictions.
         """
 
-        try:
-            self._model
-        except AttributeError:
+        if not self._is_trained:
             err = "You must train the model before doing a prediction.\n"
             raise ValueError(err) 
 
@@ -150,46 +152,83 @@ class MachineLearner:
     def log(self):
 
         self._log = []
-        #try:
-        #
-        #   y_score = self._fit_result.predict(self._test_features)
 
-        #    a, b, c = roc_curve(self._obs.test_values,y_score)
-        #    area_under_curve = auc(a,b)
-        #    self._log.append("auc:      {:6.3f}".format(area_under_curve))
+        # Make sure the training has been done
+        if not self._is_trained:
+            self._log.append("Model has not yet been trained.\n")
+            return "\n".join(self._log)
 
-        #except AttributeError:
-        #    pass
+        # ROC curve
+        try:
+            y_score = self._fit_result.predict(self._test_features)
+            a, b, c = roc_curve(self._obs.test_values,y_score)
+            area_under_curve = auc(a,b)
+            self._log.append("auc:      {:6.3f}".format(area_under_curve))
 
+        except:
+            self._log.append("Could not calculate ROC curve.\n")
+    
+        # R^2 for test and training set
         try:
             r2_train = self._model.score(self._training_features,self._obs.training_values)
             r2_test = self._model.score(self._test_features,self._obs.test_values)
 
             self._log.append("r2_train: {:6.3f}".format(r2_train))
             self._log.append("r2_test:  {:6.3f}".format(r2_test))
+        except:
+            self._log.append("Could not calculate fit statistics\n")
 
+        # Feature importance in final model
+        try:
             order = np.argsort(self._model.feature_importances_)
             order = order[::-1]
             for i in order:
                 self._log.append("{:>25s}{:6.2f}".format(self._obs.feature_names[i],
                                                          100*self._model.feature_importances_[i]))
-
-
-        except AttributeError:
-            pass
-
+        except:
+            self._log.append("Could not calculate feature importances.\n")
+        
         self._log = "\n".join(self._log)
 
         return self._log
 
     @property
     def model(self):
+        """
+        sklearn model.
+        """ 
 
-        if not self._is_trained:
-            return None
-        
-        try:
-            return self._model
-        except AttributeError:
-            return None
+        return self._model
+
+    @property
+    def training_features(self):
+        """
+        Standardized features for training.
+        """
+
+        return self._training_features
+
+    @property
+    def test_features(self):
+        """
+        Standardized features for testing.
+        """
+
+        return self._test_features
+
+    @property
+    def training_values(self):
+        """
+        Values used for training.
+        """
+
+        return self._obs.training_values
+
+    @property
+    def test_values(self):
+        """
+        Values used for testing.
+        """
+
+        return self._obs.test_values
 
