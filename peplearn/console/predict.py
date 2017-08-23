@@ -12,7 +12,7 @@ import sklearn
 sklearn.warnings.filterwarnings(action="ignore",category=DeprecationWarning)
 sklearn.warnings.filterwarnings(action="ignore",category=FutureWarning)
 
-import os, sys, pickle, arparse
+import os, sys, pickle, argparse
 
 def main(argv=None):
 
@@ -22,7 +22,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__description__)
     
     # Positionals
-    parser.add_argument("feature_pickle",help="pickled feature file used to train model")
+    parser.add_argument("feature_pickle",help="pickled feature file against which to perform predictions")
     parser.add_argument("trained_pickle",help="pickled trained model")
 
     # Options 
@@ -44,19 +44,19 @@ def main(argv=None):
         pass
 
     # Figure out output files
-    feature_base = os.path.split(feature_pickle)[1]
-    trained_model_base = os.path.split(trained_pickle)[1]
+    feature_base = os.path.split(args.feature_pickle)[1]
+    trained_model_base = os.path.split(args.trained_pickle)[1]
 
-    predictions_file = os.path.join(out_dir,"{}_{}_predictions.txt".format(feature_base,trained_model_base))
+    predictions_file = os.path.join(args.outdir,"{}_{}_predictions.txt".format(feature_base,trained_model_base))
 
     if os.path.isfile(predictions_file):
         err = "out file '{}' already exists.\n".format(predictions_file)
         raise FileExistsError(err)
 
-    forest = pickle.load(open(trained_pickle,"rb"))
+    forest = pickle.load(open(args.trained_pickle,"rb"))
 
     # Calculate features
-    features = pickle.load(open(feature_pickle,"rb"))
+    features = pickle.load(open(args.feature_pickle,"rb"))
     features.add_classes([-2,0])
     
     # Make predictions

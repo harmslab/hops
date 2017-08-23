@@ -67,13 +67,17 @@ def parse_proteome(fasta_file,kmer_size=12,out_dir=".",seq_per_file=50000,num_to
     # kmers occuring more than once
     kmers = [k[1] for k in to_sort if k[0] > 1]
 
-    # If there are more single kmers than the total we want to get, grab a 
-    # random selection of them. 
-    single_kmers = [k[1] for k in to_sort if k[0] == 1]
-    if num_to_write - len(kmers) > 0:
-        to_grab = num_to_write - len(kmers)
-        random.shuffle(single_kmers)
-        kmers.extend(single_kmers[:to_grab])
+    if len(kmers) > num_to_write:
+        kmers = kmers[:num_to_write]
+    else:
+    
+        # If there are more single kmers than the total we want to get, grab a 
+        # random selection of them. 
+        single_kmers = [k[1] for k in to_sort if k[0] == 1]
+        if num_to_write - len(kmers) > 0:
+            to_grab = num_to_write - len(kmers)
+            random.shuffle(single_kmers)
+            kmers.extend(single_kmers[:to_grab])
   
     out = []
     counter = 0
@@ -133,7 +137,7 @@ def main(argv=None):
 
     args = parser.parse_args(argv)
 
-    parse_proteome(fasta_file,kmer_size=args.kmersize,out_dir=args.outdir,
+    parse_proteome(args.fasta_file,kmer_size=args.kmersize,out_dir=args.outdir,
                    seq_per_file=args.seqperfile,num_to_write=args.numkmers)
 
 if __name__ == "__main__":

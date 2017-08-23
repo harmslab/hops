@@ -7,9 +7,8 @@ import sys
 if sys.version_info[0] < 3:
     sys.exit('Sorry, Python < 3.x is not supported')
 
-from setuptools import setup, find_packages, Extension
+from setuptools import setup, find_packages
 import numpy
-from Cython.Distutils import build_ext
 
 setup(name="peplearn",
       packages=find_packages(),
@@ -27,4 +26,12 @@ setup(name="peplearn",
                                 "*.txt","features/data/util/*.txt",
                                 "*.ipynb","features/data/util/*.ipynb"]},
       zip_safe=False,
-      classifiers=['Programming Language :: Python'])
+      classifiers=['Programming Language :: Python'],
+      entry_points = {
+            'console_scripts': [
+                  'pep_kmerize = peplearn.console.kmerize:main',
+                  'pep_features = peplearn.console.features:main',
+                  'pep_train = peplearn.console.train:main',
+                  'pep_predict = peplearn.console.predict:main',
+            ]
+      })

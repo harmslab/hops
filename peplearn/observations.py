@@ -1,4 +1,4 @@
-__description__ = /
+__description__ = \
 """
 Class storing observations and allowing calculation of features. 
 """
@@ -12,7 +12,7 @@ import operator
 
 from multiprocessing import Process, Queue
 import queue as queue_module
-import copy
+import copy, sys
 
 class Observations:
     """
