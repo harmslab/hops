@@ -11,6 +11,11 @@ __date__ = "2017-08-23"
 
 import peplearn as pl
 
+import sklearn
+
+# Suppress Future and Deprecation warning
+sklearn.warnings.filterwarnings(action="ignore",category=DeprecationWarning)
+sklearn.warnings.filterwarnings(action="ignore",category=FutureWarning)
 from sklearn import ensemble
 
 #In the future, can be modified to use basically any sklearn model  
@@ -40,9 +45,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     if len(args.breaks) == 0:
-        calc_type = "regressor"
+        fit_type = "regressor"
     else:
-        calc_type = "classifier"
+        fit_type = "classifier"
 
     # Figure out number of threads
     if args.numcpu == -1:
@@ -77,7 +82,7 @@ def main(argv=None):
     features = pickle.load(open(args.feature_pickle,'rb'))
 
     # Choose model type.  In the future, could include a bunch of possible models
-    if calc_type == "classifier":
+    if fit_type == "classifier":
         features.add_classes(args.breaks)
         model = ensemble.RandomForestClassifier(n_estimators=args.estimators,
                                                 n_jobs=num_threads) 
@@ -93,7 +98,7 @@ def main(argv=None):
         #model = svm.SVR(kernel='rbf',C=1e-3,gamma=0.1) 
         
     # Train models
-    forest = pl.MachineLearner(model)
+    forest = pl.MachineLearner(model,fit_type)
     forest.train(features,weights=weight_type)
 
     # Write out model pickle

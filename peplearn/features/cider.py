@@ -17,7 +17,8 @@ class CiderFeatures(Features):
 
     def __init__(self,seq_length=12,
                       use_sliding_windows=True,
-                      features_to_ignore=None):
+                      features_to_ignore=None,
+                      **kwargs):
         """
         Initialize the class
 
@@ -25,12 +26,19 @@ class CiderFeatures(Features):
         -----------
 
         seq_length: length of peptide sequences being studied
+        use_sliding_windows: bool. whether or not to use sliding windows
+        features_to_ignore: list, features to ignore
+        **kwargs: extra keyword arguments.  (currently ignored)
         """
-        
-        self._seq_length = seq_length
-        self._normalize = False
-        self._use_sliding_windows = (use_sliding_windows != 0)
+
+        # Kinds of a hack.  This makes sure that self.initialization_call
+        # is defined properly, even though these args don't actually do anything.
+        # This are caught by **kwargs above.
+        self._data_files = None 
         self._use_flip_pattern = False
+
+        self._seq_length = seq_length
+        self._use_sliding_windows = (use_sliding_windows != 0)
         self._features_to_ignore = np.array(features_to_ignore)
 
         self._compiled = False             

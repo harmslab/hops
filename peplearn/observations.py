@@ -1,11 +1,18 @@
+__description__ = /
+"""
+Class storing observations and allowing calculation of features. 
+"""
+__author__ = "Michael J. Harms"
+__usage__ = "2017-08-23"
+
+from . import features
+
 import numpy as np
 import operator
 
 from multiprocessing import Process, Queue
 import queue as queue_module
-import time, copy
-
-import sys
+import copy
 
 class Observations:
     """
@@ -398,4 +405,42 @@ class Observations:
         
         return self._feature_names
 
+
+def calc_features(sequence_data,use_flip_pattern=True,use_sliding_windows=12,
+                  num_threads=1):
+    """
+    Calculate the features of a dataset.
+
+    Parameters:
+    sequence_data: a file with a collection of sequences with line format
+        sequence value [weight]
+    use_flip_pattern: bool.  whether or not to calculate vector of sign flip
+                      for each feature slong the sequence
+    use_sliding_windows: int. max size of sliding windows to employ.
+    num_threads: number of threads to use for the calculation.
+
+    Returns an Observations instance with calculated features.
+    """
+
+    print("Constructing feature set.")
+    sys.stdout.flush()
+
+    # Create observations object
+    obs = Observations(sequence_data)
+
+    # Append features on which to train
+    simple_features = features.SimpleFeatures(use_flip_pattern=use_flip_pattern,
+                                              use_sliding_windows=use_sliding_windows)
+    cider_features = features.CiderFeatures(use_sliding_windows=bool(use_sliding_windows))
+
+    obs.add_features(simple_features)
+    obs.add_features(cider_features)
+
+    # Do the calculation
+    print("Calculating features on {} threads.".format(num_threads))
+    sys.stdout.flush()
+
+    obs.calc_features(num_threads)
+
+    return obs
 

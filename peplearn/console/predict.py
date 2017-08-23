@@ -6,7 +6,11 @@ Predict binding from a pre-calculated feature file and trained peplearn model.
 __author__ = "Michael J. Harms"
 __date__ = "2017-08-23"
 
-import peplearn as pl
+import sklearn
+
+# Suppress Future and Deprecation warning
+sklearn.warnings.filterwarnings(action="ignore",category=DeprecationWarning)
+sklearn.warnings.filterwarnings(action="ignore",category=FutureWarning)
 
 import os, sys, pickle, arparse
 
