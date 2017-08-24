@@ -19,21 +19,21 @@ class Observations:
     Class for creating and holding machine learning training/test sets.
     """
     
-    def __init__(self,observation_file,k_fold_size=10,value_type=None):
+    def __init__(self,observation_file,kfold_size=10,value_type=None):
         """
         Initialize the class.
 
         observation_file: text file with observations. 
-        k_fold_size: split the data into k_fold sets for cross validation.  
-                     1/k_fold_size observations are set aside as a true test set.
-                     The remaining observations are used for (k_fold_size-1)
+        kfold_size: split the data into k_fold sets for cross validation.  
+                    1/kfold_size observations are set aside as a true test set.
+                    The remaining observations are used for (kfold_size-1)
                      cross validation.
         value_type: type of value in the dataset.  If None, this is determined
                     from the file itself.
         """
        
         self._observation_file = observation_file
-        self._k_fold_size = k_fold_size
+        self._kfold_size = kfold_size
         self._value_type = value_type 
  
         # load in all of the observations
@@ -53,7 +53,7 @@ class Observations:
         training.
         """
         
-        self._k_fraction = 1.0/self._k_fold_size
+        self._k_fraction = 1.0/self._kfold_size
         self._k_length = int(np.floor(len(self._indexes)*self._k_fraction))
                
         np.random.shuffle(self._indexes)
@@ -407,6 +407,14 @@ class Observations:
         
         return self.weights[self._k_length:]
 
+    @property
+    def kfold_size(self):
+        """
+        Number of categories for k-fold training and validation.
+        """
+    
+        return self._kfold_size
+
     def _meta_k_training(self,array_to_slice,k):
         """
         Meta function that slices an array that returns a k-fold 
@@ -417,8 +425,8 @@ class Observations:
         # Only use the real training set
         real_training = array_to_slice[self._k_length:]
 
-        if k > self._k_fold_size -2 or k < 0:
-            err = "k must be between 0 and {}.\n".format(0,self._k_fold_size-2)
+        if k > self._kfold_size -2 or k < 0:
+            err = "k must be between 0 and {}.\n".format(0,self._kfold_size-2)
             raise ValueError(err)
 
         start =  real_training[:(k*self._k_length)]        
@@ -436,8 +444,8 @@ class Observations:
         # Only use the real training set
         real_training = array_to_slice[self._k_length:]
 
-        if k > self._k_fold_size -2 or k < 0:
-            err = "k must be between 0 and {}.\n".format(0,self._k_fold_size-2)
+        if k > self._kfold_size -2 or k < 0:
+            err = "k must be between 0 and {}.\n".format(0,self._kfold_size-2)
             raise ValueError(err)
 
         return real_training[(k*self._k_length):((k+1)*self._k_length)]        

@@ -33,5 +33,6 @@ setup(name="peplearn",
                   'pep_features = peplearn.console.features:main',
                   'pep_train = peplearn.console.train:main',
                   'pep_predict = peplearn.console.predict:main',
+                  'pep_stats = peplearn.console.stats:main',
             ]
       })

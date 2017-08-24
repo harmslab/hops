@@ -69,14 +69,9 @@ def main(argv=None):
     # Figure out output files
     training_file = os.path.split(args.feature_pickle)[1]
     model_out_file = os.path.join(args.outdir,"{}_model.pickle".format(training_file))
-    log_out_file = os.path.join(args.outdir,"{}.log".format(training_file))
 
     if os.path.isfile(model_out_file):
         err = "out file '{}' already exists.\n".format(model_out_file)
-        raise FileExistsError(err)
-
-    if os.path.isfile(log_out_file):
-        err = "out file '{}' already exists.\n".format(log_out_file)
         raise FileExistsError(err)
 
     features = pickle.load(open(args.feature_pickle,'rb'))
@@ -99,18 +94,12 @@ def main(argv=None):
         
     # Train models
     forest = pl.MachineLearner(model,fit_type)
-    forest.train(features,weights=weight_type)
+    forest.train(features,weights=weight_type,kfold=True)
 
     # Write out model pickle
     f = open(model_out_file,"wb")
     pickle.dump(forest,f)
     f.close()
 
-    # Write out human-readable log file 
-    f = open(log_out_file,"w")
-    f.write(forest.calc_summary_stats())
-    f.write(forest.calc_feature_importance())
-    f.close()
- 
 if __name__ == "__main__":
     main() 

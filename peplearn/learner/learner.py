@@ -5,11 +5,13 @@ This holds the main class that holds features and fits models.
 __author__ = "Michael J. Harms"
 __date__ = "2017-08-23"
 
+from . import decompose_model
+
 from sklearn.metrics import roc_curve, auc
 import numpy as np
 import inspect
 
-from . import decompose_model
+import sys, copy
 
 class MachineLearner:
     """
@@ -36,7 +38,7 @@ class MachineLearner:
         # Model not yet trained
         self._is_trained = False
 
-    def train(self,obs,weights="even"):
+    def train(self,obs,weights="even",kfold=False):
         """
         Train the model.
 
@@ -45,10 +47,12 @@ class MachineLearner:
         obs: an Observations instance with features already calculated.
         weights: array that is the same length as the number of values, for 
                  weighting observations
+        kfold: bool. whether or not to do k-fold training
         """
 
         self._obs = obs
         self._weight_type = weights
+        self._kfold = kfold
 
         # Parse the weights
         if self._weight_type is None:
@@ -61,33 +65,69 @@ class MachineLearner:
             err = "'weights' should be 'even' or 'file'.\n"
             raise ValueError(err)
        
-        # Standardize the training features
+        # Find standardization for features features
         self._standardization_mean = np.mean(self._obs.training_features,0)
-        self._training_features = self._obs.training_features - self._standardization_mean
-
-        self._standardization_scalar = np.std(self._training_features,0)
+        f = self._obs.training_features - self._standardization_mean
+        self._standardization_scalar = np.std(f,0)
 
         # If the standard deviation of the feature is 0, set it to inf.  This
         # will give the feature a final standard deviation of 0 --> meaning it
         # does not contribute to the final fit.  This is good because a standard
         # deviation of zero means the feature does not change across samples.
         self._standardization_scalar[self._standardization_scalar == 0] = np.inf
-
         self._standardization_scalar = 1.0/self._standardization_scalar
 
-        self._training_features = self._training_features*self._standardization_scalar
-        self._test_features = (self._obs.test_features -  self._standardization_mean)*self._standardization_scalar
+        sys.stdout.write("Performing main fit.\n")
+        sys.stdout.flush()
 
-        # Train the model 
-        try:
-            self._fit_result = self._model.fit(self._training_features, self._obs.training_values,sample_weight=self._weights) 
-        except TypeError:
-            # not all sklearn models accept a weight term
-            self._fit_result = self._model.fit(self._training_features, self._obs.training_values)
+        self._main_model = copy.deepcopy(self._model)
+        self._fit_result = self._do_fit(self._main_model,
+                                        self.training_features,
+                                        self.training_values,
+                                        self._weights)
+
+        sys.stdout.write("Performing k-fold fits.\n")
+        sys.stdout.flush()
+        self._k_models = []
+        self._k_fit_result = []
+        if self._kfold:
+            for i in range(self._obs.kfold_size - 1):
+              
+                sys.stdout.write("     k-fold fit {} of {}.\n".format(i+1,self._obs.kfold_size-1))
+                sys.stdout.flush()
+
+                self._k_models.append(copy.deepcopy(self._model))
+                features = self._standardize(self._obs.get_k_training_features(i))
+                values   =                   self._obs.get_k_training_values(i)
+                weights  =                   self._obs.get_k_training_weights(i)
+
+
+                self._k_fit_result.append(self._do_fit(self._k_models[-1],features,values,weights))
     
         self._is_trained = True
 
-    def predict(self,obs):
+    def _standardize(self,some_feature_array):
+        """
+        Standardize features according to total dataset.
+        """
+
+        return (some_feature_array - self._standardization_mean)*self._standardization_scalar
+
+    def _do_fit(self,model,features,values,weights):
+        """
+        Actually do the fit.  Should only be called internally.
+        """
+
+        # Train the model 
+        try:
+            result = model.fit(features,values,sample_weight=weights) 
+        except TypeError:
+            # not all sklearn models accept a weight term
+            result = model.fit(features,values)
+
+        return result
+
+    def predict(self,obs,k=-1):
         """
         Given an Observations instance with features and a trained model, 
         predict the value for all observations.
@@ -95,25 +135,29 @@ class MachineLearner:
         Parameters:
         -----------
         obs: observations instance with calculated features.
-        model: trained random model model.
+        k: use the kth kfold model.  If k is -1, use the full set.  
         
         Returns a dictionary of predictions.
         """
 
         if not self._is_trained:
             err = "You must train the model before doing a prediction.\n"
-            raise ValueError(err) 
+            raise ValueError(err)
 
-        # Standardize input features
-        features = obs.features - self._standardization_mean
-        features = features*self._standardization_scalar
+        # decide which model to use
+        if k == -1:
+            model = self._main_model
+        else:
+            if k < 0 or k > self._obs.kfold_size -2:
+                err = "k must be between 0 and {}\n".format(self._obs.kfold_size-2)
+                raise ValueError(err)
+            model = self._k_models[k]
 
-        predictions = self._model.predict(features)
+        predictions = self._main_model.predict(self._standardize(obs.features))
    
         out = {obs.sequences[i]:predictions[i] for i in range(len(predictions))}
  
         return out 
-
 
     @property
     def model(self):
@@ -137,7 +181,7 @@ class MachineLearner:
         Standardized features for training.
         """
 
-        return self._training_features
+        return self._standardize(self._obs.training_features)
 
     @property
     def test_features(self):
@@ -145,7 +189,7 @@ class MachineLearner:
         Standardized features for testing.
         """
 
-        return self._test_features
+        return self._standardize(self._obs.test_features)
 
     @property
     def training_values(self):
@@ -163,48 +207,98 @@ class MachineLearner:
 
         return self._obs.test_values
 
-    def calc_roc_curve(self):
+    def calc_kfold_roc_curve(self):
         """
-        Calculate a reciever operator characterstic curve for a trained model.
+        Calculate a reciever operator characterstic curve for each of the 
+        k models.
         """
       
         # Only meaningful for a classifier model 
         if self._fit_type != "classifier":
             return None
- 
+
         out = []
 
-        out.append("# {}\n".format(44*"-"))
-        out.append("# Classifier statistics\n")
-        out.append("# {}\n".format(44*"-"))
- 
-        # Calculate the predicted versus real values 
-        y_calc = self._fit_result.predict(self._test_features)
-        y_obs = self._obs.test_values
+        if not self._kfold:
+            err = "calc_kfold_roc_curve requires k-fold be used.\n"
+            raise ValueError(err)
 
-        # Determine the total percent correct
-        pct_correct = sum(y_calc == y_obs)/len(y_obs)
-        out.append("% correct: {:8.3f}\n".format(100*pct_correct))
+        kfold_pct = []
+        kfold_roc = []
+        kfold_auc = []
+        for i in range(self._obs.kfold_size - 1):
+            model = self._k_models[i]
+            test_features = self._standardize(self._obs.get_k_test_features(i))
+            test_values = self._obs.get_k_test_values(i)
 
+            pct_correct, roc_results, auc_results = self._indiv_roc(model,
+                                                                    test_features,
+                                                                    test_values)
+
+            kfold_pct.append(pct_correct)
+            kfold_roc.append(roc_results)
+            kfold_auc.append(auc_results)
+
+        # Take mean and standard deviation of pct
+        mean_pct = np.mean(kfold_pct)
+        std_pct  = np.std(kfold_pct)
+        final_pct = (mean_pct,std_pct)
+
+        breaks = self._obs.breaks
+        num_classes = len(breaks) + 1
+
+        final_roc = []
+        final_auc = []
+        for i in range(num_classes):
+
+            final_roc.append([[0,1],[0,1]])
+            final_auc.append([])
+            for j in range(self._obs.kfold_size - 1):
+
+                break_roc = kfold_roc[j][i]
+
+                # Skip curves where mid is at 1,1
+                if not (break_roc[0][1] == 1 and break_roc[1][1] == 1):
+                    final_roc[-1][0].append(break_roc[0][1])
+                    final_roc[-1][1].append(break_roc[1][1])
+
+                break_auc = kfold_auc[j][i]
+                final_auc[-1].append(break_auc)
+
+            # Sort ROC curve 
+            roc_together = list(zip(final_roc[-1][0],final_roc[-1][1]))
+            roc_together.sort()
+
+            final_roc[-1] = copy.deepcopy(roc_together)
+
+            # Take mean and standard deviation of AUC
+            mean_auc = np.mean(final_auc[-1])
+            std_auc  = np.std(final_auc[-1])
+            final_auc[-1] = (mean_auc,std_auc)
+
+        out.append("# {}\n".format(44*"-"))
+        out.append("# k-fold classifier statistics\n")
+        out.append("# {}\n".format(44*"-"))
+
+        out.append("Percent correct: {:8.3f} +/- {:8.3f}\n".format(100*final_pct[0],
+                                                                   100*final_pct[1]))
+        out.append("\n")
+
+        # Now deal with area under curve stats
         out.append("Area under ROC curve:\n")
-        # Go through each class and calculate an AUC curve
         breaks = self._obs.breaks
         num_classes = len(breaks) + 1
         for i in range(num_classes):
 
-            true_calc =  y_obs == i
-            pred_calc = y_calc == i
-
-            a, b, c = roc_curve(true_calc,pred_calc)
-
             if i == 0:
-                label = "       E <={:8.3f}".format(breaks[0])
+                label = "            E <={:8.3f}".format(breaks[0])
             elif i == (num_classes - 1):
-                label = "       E > {:8.3f}".format(breaks[-1])
+                label = "            E > {:8.3f}".format(breaks[-1])
             else:
                 label = "{:8.3f} <= E < {:8.3f}".format(breaks[i-1],breaks[i])
 
-            result = auc(a,b)
+            result = final_auc[i][0]
+            result_std = final_auc[i][1]
             result_key = "{:.1f}".format(np.floor(10*result))
             result_dict = {"5.0":"failed",
                            "6.0":"poor",
@@ -214,41 +308,185 @@ class MachineLearner:
 
             result_call = result_dict[result_key]
 
-            out.append("{}: {:8.3f} -> {}\n".format(label,100*result,result_call))
-        out.append("\n")   
+            out.append("{:30s}: {:8.3f} +/- {:8.3f}-> {}\n".format(label,
+                                                                   100*result,
+                                                                   100*result_std,
+                                                                   result_call))
+        out.append("\n")
+
+        # Spit out ROC curve proper
+        out.append("Reciever Operating Characteristic curve\n")
+        out.append("{:20s}{:>14s}{:>14s}\n".format("class","false_rate","pos_rate"))
+        for i in range(num_classes):
+
+            if i == 0:
+                label = "E<={:.3f}".format(breaks[0])
+            elif i == (num_classes - 1):
+                label = "E>{:.3f}".format(breaks[-1])
+            else:
+                label = "{:.3f}<=E<{:.3f}".format(breaks[i-1],breaks[i])
+
+            for j in range(len(final_roc[i])):
+                out.append("{:20s}{:14.5f}{:14.5f}\n".format(label,final_roc[i][j][0],final_roc[i][j][1]))
+                 
+        out.append("\n")
+
+        return "".join(out)
+
+    def calc_main_roc_curve(self):
+        """
+        Calculate ROC curve and statistics for the main model.
+        """
+
+        out = []
+
+        model = self._main_model 
+        pct_correct, roc_results, auc_results = self._indiv_roc(model,
+                                                                self.test_features, 
+                                                                self.test_values)
+
+        out.append("# {}\n".format(44*"-"))
+        out.append("# final classifier statistics\n")
+        out.append("# {}\n".format(44*"-"))
+
+        out.append("Percent correct: {:8.3f}\n".format(100*pct_correct))
+
+        out.append("\n")
+
+        # Now deal with area under curve stats
+        out.append("Area under ROC curve:\n")
+        breaks = self._obs.breaks
+        num_classes = len(breaks) + 1
+        for i in range(num_classes):
+
+            if i == 0:
+                label = "            E <={:8.3f}".format(breaks[0])
+            elif i == (num_classes - 1):
+                label = "            E > {:8.3f}".format(breaks[-1])
+            else:
+                label = "{:8.3f} <= E < {:8.3f}".format(breaks[i-1],breaks[i])
+
+            result = auc_results[i]
+            result_key = "{:.1f}".format(np.floor(10*result))
+            result_dict = {"5.0":"failed",
+                           "6.0":"poor",
+                           "7.0":"fair",
+                           "8.0":"good",
+                           "9.0":"excellent"}
+
+            result_call = result_dict[result_key]
+
+            out.append("{:30s}: {:8.3f} -> {}\n".format(label,
+                                                        100*result,
+                                                        result_call))
+        out.append("\n")
+
+        # Spit out ROC curve proper
+        out.append("Reciever Operating Characteristic curve\n")
+        out.append("{:20s}{:>14s}{:>14s}\n".format("class","false_rate","pos_rate"))
+        for i in range(num_classes):
+
+            if i == 0:
+                label = "E<={:.3f}".format(breaks[0])
+            elif i == (num_classes - 1):
+                label = "E>{:.3f}".format(breaks[-1])
+            else:
+                label = "{:.3f}<=E<{:.3f}".format(breaks[i-1],breaks[i])
+
+            for j in range(len(roc_results[i][0])):
+                out.append("{:20s}{:14.5f}{:14.5f}\n".format(label,roc_results[i][0][j],roc_results[i][1][j]))
+                 
+        out.append("\n")
  
         return "".join(out)
 
-    def calc_summary_stats(self):
+    def _indiv_roc(self,model,test_features,test_values):
+
+        # Calculate the predicted versus real values 
+        y_calc = model.predict(test_features)
+        y_obs = test_values
+
+        # Determine the total percent correct
+        pct_correct = sum(y_calc == y_obs)/len(y_obs)
+
+        # Go through each class and calculate an AUC curve
+        breaks = self._obs.breaks
+        num_classes = len(breaks) + 1
+        roc_results = []
+        auc_results = []
+        for i in range(num_classes):
+
+            true_calc =  y_obs == i
+            pred_calc = y_calc == i
+
+            a, b, c = roc_curve(true_calc,pred_calc)
+
+            roc_results.append((a,b))
+            auc_results.append(auc(a,b))
+
+        return pct_correct, roc_results, auc_results
+
+    def calc_kfold_r2(self):
         """
-        Return a report with summary statistics for the model.
+        Calculate R^2 for k-fold models.
         """
 
         out = []
 
         out.append("# {}\n".format(44*"-"))
-        out.append("# Summary statistics\n")
+        out.append("# k-fold summary statistics\n")
         out.append("# {}\n".format(44*"-"))
 
-        # Make sure the training has been done
-        if not self._is_trained:
-            out.append("Model has not yet been trained.\n\n")
-            return "".join(out)
+        if not self._kfold:
+            err = "calc_kfold_r2 requires kfold model\n"
+            raise ValueError(err)
+
+
+        r2_train = []
+        r2_test = []            
+        for i in range(self._obs.kfold_size - 1):
+
+            model = self._k_models[i]
+
+            train_features = self._standardize(self._obs.get_k_training_features(i))    
+            train_values   =                   self._obs.get_k_training_values(i)    
+
+            test_features = self._standardize(self._obs.get_k_test_features(i))    
+            test_values   =                   self._obs.get_k_test_values(i)    
+
+            r2_train.append(100*model.score(train_features,train_values))
+            r2_test.append(100*model.score(test_features,test_values))
+
+
+        out.append("r2_train: {:8.3f} +/- {:8.3f}\n".format(np.mean(r2_train),
+                                                            np.std(r2_train)))
+        out.append("r2_test:  {:8.3f} +/- {:8.3f}\n".format(np.mean(r2_test),
+                                                            np.std(r2_test)))
+        out.append("\n")
+    
+
+        return "".join(out)
+
+    def calc_main_r2(self):
+        """
+        Calculate R^2 for main model.
+        """
+
+        out = []
+
+        out.append("# {}\n".format(44*"-"))
+        out.append("# final summary statistics\n")
+        out.append("# {}\n".format(44*"-"))
 
         # R^2 for test and training set
-        r2_train = self._model.score(self._training_features,self._obs.training_values)
-        r2_test = self._model.score(self._test_features,self._obs.test_values)
+        r2_train = self._main_model.score(self.training_features,self.training_values)
+        r2_test = self._main_model.score(self.test_features,self.test_values)
 
-        out.append("r2_train: {:6.3f}\n".format(r2_train))
-        out.append("r2_test:  {:6.3f}\n".format(r2_test))
+        out.append("r2_train: {:8.3f}\n".format(r2_train))
+        out.append("r2_test:  {:8.3f}\n".format(r2_test))
         out.append("\n")
 
-        if self._fit_type == "classifier":
-            out.append(self.calc_roc_curve())
-   
-        out = "".join(out)
-
-        return out
+        return "".join(out)
 
     def calc_feature_importance(self):
         """
@@ -259,12 +497,38 @@ class MachineLearner:
         out = []
 
         # Feature importance in final model
-        importance = np.copy(self._model.feature_importances_)
+        importance = np.copy(self._main_model.feature_importances_)
 
         feature_dict = {}
         for i in range(len(importance)):
             feature_dict[self._obs.feature_names[i]] = importance[i] 
 
         out.append(decompose_model.summary(feature_dict))
+
+        return "".join(out)
+
+    def calc_summary_stats(self,show_main_fit=False):
+        """
+        Return a report with summary statistics for the model.
+        """
+
+        out = []
+
+        # Make sure the training has been done
+        if not self._is_trained:
+            out.append("Model has not yet been trained.\n\n")
+            return "".join(out)
+
+        # Write main fit statistics if requested
+        if show_main_fit:
+            out.append(self.calc_main_r2())
+            if self._fit_type == "classifier":
+                out.append(self.calc_main_roc_curve())
+    
+        # Write kfold fit statistics if relevant
+        if self._kfold:
+            out.append(self.calc_kfold_r2())
+            if self._fit_type == "classifier":
+                out.append(self.calc_kfold_roc_curve())
 
         return "".join(out)
