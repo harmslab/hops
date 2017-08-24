@@ -21,7 +21,7 @@ def main(argv=None):
     parser.add_argument("enrich_file",help="enrichment file from which features will be extracted")
 
     # Options 
-    parser.add_argument("-o","--outdir",help="output directory",action="store",type=str,default=".")
+    parser.add_argument("-o","--outfile",help="output file",action="store",type=str,default=None)
     parser.add_argument("-n","--numcpu",help="number of cpus to use.  if -1, use all cpus",action="store",type=int,default=-1)
 
     args = parser.parse_args(argv)
@@ -32,15 +32,12 @@ def main(argv=None):
     else:
         num_threads = args.numcpu
 
-    # Create output directory (if necessary)
-    try:
-        os.mkdir(args.outdir)
-    except FileExistsError:
-        pass
-
     # Figure out output files
-    base_file = os.path.split(args.enrich_file)[1]
-    data_out_file = os.path.join(args.outdir,"{}_features.pickle".format(base_file))
+    if args.outfile is None:
+        base_file = os.path.split(args.enrich_file)[1]
+        data_out_file = "{}_features.pickle".format(base_file)
+    else:
+        data_out_file = args.outfile
 
     if os.path.isfile(data_out_file):
         err = "out file '{}' already exists.\n".format(data_out_file)

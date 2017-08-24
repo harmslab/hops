@@ -26,7 +26,7 @@ def main(argv=None):
     parser.add_argument("trained_pickle",help="pickled trained model")
 
     # Options 
-    parser.add_argument("-o","--outdir",help="output directory",action="store",type=str,default=".")
+    parser.add_argument("-o","--outfile",help="output file",action="store",type=str,default=None)
     parser.add_argument("-n","--numcpu",help="number of cpus to use.  if -1, use all cpus",action="store",type=int,default=-1)
 
     args = parser.parse_args(argv)
@@ -37,17 +37,13 @@ def main(argv=None):
     else:
         num_threads = args.numcpu
 
-    # Create output directory (if necessary)
-    try:
-        os.mkdir(args.outdir)
-    except FileExistsError:
-        pass
-
     # Figure out output files
-    feature_base = os.path.split(args.feature_pickle)[1]
-    trained_model_base = os.path.split(args.trained_pickle)[1]
-
-    predictions_file = os.path.join(args.outdir,"{}_{}_predictions.txt".format(feature_base,trained_model_base))
+    if args.outfile is None:
+        feature_base = os.path.split(args.feature_pickle)[1]
+        trained_model_base = os.path.split(args.trained_pickle)[1]
+        predictions_file = os.path.join(args.outdir,"{}_{}_predictions.txt".format(feature_base,trained_model_base))
+    else:
+        predictions_file = args.outfile
 
     if os.path.isfile(predictions_file):
         err = "out file '{}' already exists.\n".format(predictions_file)

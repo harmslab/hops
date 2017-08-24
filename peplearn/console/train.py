@@ -31,7 +31,7 @@ def main(argv=None):
     parser.add_argument("feature_pickle",help="pickled feature file used to train model")
 
     # Options 
-    parser.add_argument("-o","--outdir",help="output directory",action="store",type=str,default=".")
+    parser.add_argument("-o","--outfile",help="output file",action="store",type=str,default=None)
     parser.add_argument("-n","--numcpu",help="number of cpus to use.  if -1, use all cpus",action="store",type=int,default=-1)
     parser.add_argument("-w","--weight",help="weight regression according to weights in the feature file",action="store_true")
     parser.add_argument("-e","--estimators",help="number of estimators to use",action="store",type=int,default=40)
@@ -60,15 +60,12 @@ def main(argv=None):
     if args.weight:
         weight_type = "file"
 
-    # Create output directory (if necessary)
-    try:
-        os.mkdir(args.outdir)
-    except FileExistsError:
-        pass
-
     # Figure out output files
-    training_file = os.path.split(args.feature_pickle)[1]
-    model_out_file = os.path.join(args.outdir,"{}_model.pickle".format(training_file))
+    if args.outfile is None:
+        training_file = os.path.split(args.feature_pickle)[1]
+        model_out_file = "{}_model.pickle".format(training_file)
+    else:
+        model_out_file = args.outfile
 
     if os.path.isfile(model_out_file):
         err = "out file '{}' already exists.\n".format(model_out_file)

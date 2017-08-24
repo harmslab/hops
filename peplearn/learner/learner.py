@@ -161,9 +161,6 @@ class MachineLearner:
 
             k_preds = np.array(k_preds,dtype=float)
 
-            print(k_preds)
-            print(main_predictions)
-
             if self._fit_type == "regressor":
                 # standard deviation on prediction across k-fold replicates
                 k_err = np.std(k_preds,0)

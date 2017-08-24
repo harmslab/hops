@@ -16,7 +16,7 @@ def create_kmers(seq,kmer_size):
     
     return [seq[i:(i+kmer_size)] for i in range(len(seq)-kmer_size+1)]
 
-def parse_proteome(fasta_file,kmer_size=12,out_dir=".",seq_per_file=50000,num_to_write=1000000):
+def parse_proteome(fasta_file,kmer_size=12,out_base="kmers",seq_per_file=50000,num_to_write=1000000):
     """
     Read a uniprot fasta file of protein sequences and break into a set of
     kmers.
@@ -93,7 +93,7 @@ def parse_proteome(fasta_file,kmer_size=12,out_dir=".",seq_per_file=50000,num_to
 
         if counter != 0 and counter % seq_per_file == 0:
 
-            out_file = os.path.join(out_dir,"{}_kmers_{}.txt".format(fasta_file,counter))
+            out_file = "{}_{}.kmers".format(out_base,counter)
             print(counter,len(kmers))
             sys.stdout.flush()
         
@@ -106,7 +106,7 @@ def parse_proteome(fasta_file,kmer_size=12,out_dir=".",seq_per_file=50000,num_to
         counter += 1
             
 
-    out_file = os.path.join(out_dir,"{}_kmers_{}.txt".format(fasta_file,counter))
+    out_file = "{}_{}.kmers".format(out_base,counter)
 
     f = open(out_file,'w')
     f.write("".join(out))
@@ -127,7 +127,7 @@ def main(argv=None):
     parser.add_argument("fasta_file",help="fasta file to be turned into kmers")
 
     # Options 
-    parser.add_argument("-o","--outdir",help="output directory",action="store",type=str,default=".")
+    parser.add_argument("-o","--outbase",help="base name for output files",action="store",type=str,default=None)
     parser.add_argument("-k","--kmersize",help="kmer size",action="store",type=int,default=12)
     parser.add_argument("-s","--seqperfile",help="number of sequences per output file",action="store",
                         type=int,default=50000)
@@ -137,7 +137,12 @@ def main(argv=None):
 
     args = parser.parse_args(argv)
 
-    parse_proteome(args.fasta_file,kmer_size=args.kmersize,out_dir=args.outdir,
+    if args.outbase is None:
+        out_base = args.fasta_file
+    else:
+        out_base = args.outbase
+
+    parse_proteome(args.fasta_file,kmer_size=args.kmersize,out_base=out_base,
                    seq_per_file=args.seqperfile,num_to_write=args.numkmers)
 
 if __name__ == "__main__":
