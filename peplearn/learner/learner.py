@@ -64,7 +64,7 @@ class MachineLearner:
         else:
             err = "'weights' should be 'even' or 'file'.\n"
             raise ValueError(err)
-       
+      
         # Find standardization for features features
         self._standardization_mean = np.mean(self._obs.training_features,0)
         f = self._obs.training_features - self._standardization_mean
@@ -80,7 +80,8 @@ class MachineLearner:
         sys.stdout.write("Performing main fit.\n")
         sys.stdout.flush()
 
-        self._main_model = copy.deepcopy(self._model)
+        # Create a new model with exactly the same paramters as the input model
+        self._main_model = type(self._model)(**self._model.get_params())
         self._fit_result = self._do_fit(self._main_model,
                                         self.training_features,
                                         self.training_values,
@@ -96,11 +97,14 @@ class MachineLearner:
                 sys.stdout.write("     k-fold fit {} of {}.\n".format(i+1,self._obs.kfold_size-1))
                 sys.stdout.flush()
 
-                self._k_models.append(copy.deepcopy(self._model))
+                # Create a new instance of the model with exactly the same
+                # parameters as the input model
+                self._k_models.append(type(self._model)(**self._model.get_params()))
                 features = self._standardize(self._obs.get_k_training_features(i))
                 values   =                   self._obs.get_k_training_values(i)
                 weights  =                   self._obs.get_k_training_weights(i)
-
+                if self._weight_type == "even":
+                    weights = self._weights[0:len(weights)] 
 
                 self._k_fit_result.append(self._do_fit(self._k_models[-1],features,values,weights))
     
@@ -127,7 +131,7 @@ class MachineLearner:
 
         return result
 
-    def predict(self,obs,k=-1):
+    def predict(self,obs):
         """
         Given an Observations instance with features and a trained model, 
         predict the value for all observations.
@@ -135,7 +139,6 @@ class MachineLearner:
         Parameters:
         -----------
         obs: observations instance with calculated features.
-        k: use the kth kfold model.  If k is -1, use the full set.  
         
         Returns a dictionary of predictions.
         """
@@ -144,18 +147,36 @@ class MachineLearner:
             err = "You must train the model before doing a prediction.\n"
             raise ValueError(err)
 
-        # decide which model to use
-        if k == -1:
-            model = self._main_model
-        else:
-            if k < 0 or k > self._obs.kfold_size -2:
-                err = "k must be between 0 and {}\n".format(self._obs.kfold_size-2)
-                raise ValueError(err)
-            model = self._k_models[k]
+        features = self._standardize(obs.features)
 
-        predictions = self._main_model.predict(self._standardize(obs.features))
-   
-        out = {obs.sequences[i]:predictions[i] for i in range(len(predictions))}
+        model = self._main_model
+        main_predictions = self._main_model.predict(features)
+
+        if self._kfold:
+
+            k_preds = []
+            for i in range(self._obs.kfold_size - 1):
+
+                k_preds.append(self._k_models[i].predict(features))
+
+            k_preds = np.array(k_preds,dtype=float)
+
+            print(k_preds)
+            print(main_predictions)
+
+            if self._fit_type == "regressor":
+                # standard deviation on prediction across k-fold replicates
+                k_err = np.std(k_preds,0)
+            else:
+                # fraction of time the k-fold replicates got the same answer 
+                # as the main fit
+                k_err = np.sum(k_preds == main_predictions,0)/k_preds.shape[0] 
+
+ 
+            out = {obs.sequences[i]:(main_predictions[i],k_err[i]) for i in range(len(main_predictions))}
+        else:
+            out = {obs.sequences[i]:(main_predictions[i],0.0) for i in range(len(main_predictions))}
+            
  
         return out 
 
@@ -269,7 +290,7 @@ class MachineLearner:
             roc_together = list(zip(final_roc[-1][0],final_roc[-1][1]))
             roc_together.sort()
 
-            final_roc[-1] = copy.deepcopy(roc_together)
+            final_roc[-1] = roc_together
 
             # Take mean and standard deviation of AUC
             mean_auc = np.mean(final_auc[-1])
@@ -441,7 +462,6 @@ class MachineLearner:
             err = "calc_kfold_r2 requires kfold model\n"
             raise ValueError(err)
 
-
         r2_train = []
         r2_test = []            
         for i in range(self._obs.kfold_size - 1):
@@ -482,8 +502,8 @@ class MachineLearner:
         r2_train = self._main_model.score(self.training_features,self.training_values)
         r2_test = self._main_model.score(self.test_features,self.test_values)
 
-        out.append("r2_train: {:8.3f}\n".format(r2_train))
-        out.append("r2_test:  {:8.3f}\n".format(r2_test))
+        out.append("r2_train: {:8.3f}\n".format(100*r2_train))
+        out.append("r2_test:  {:8.3f}\n".format(100*r2_test))
         out.append("\n")
 
         return "".join(out)
@@ -496,7 +516,8 @@ class MachineLearner:
 
         out = []
 
-        # Feature importance in final model
+        # Feature importance in final model.  copy prevents the @property method
+        # from running over and over and slowing script down
         importance = np.copy(self._main_model.feature_importances_)
 
         feature_dict = {}

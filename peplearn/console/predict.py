@@ -66,7 +66,14 @@ def main(argv=None):
     
     f = open(predictions_file,'w')
     for s in seqs:
-        f.write("{} {}\n".format(s,predictions[s]))
+
+        if predictions[s][0].is_integer():
+            fmt_string = "{} {:12d}{:12.3f}\n"
+            f.write(fmt_string.format(s,int(predictions[s][0]),predictions[s][1]))
+        else:
+            fmt_string = "{} {:12.3f}{:12.3f}\n"
+            f.write(fmt_string.format(s,predictions[s][0],predictions[s][1]))
+    
     f.close()
 
 if __name__ == "__main__":
