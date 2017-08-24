@@ -5,7 +5,8 @@ rm -f *.features *.stats *.predictions *.model
 pep_features test.enrich -o test.features
 
 # Train the model using k-fold cross validation
-pep_train test.features -o test.model 
+pep_train test.features -o test.model -b 0    # train to classify as above or below 0
+#pep_train test.features -o test.model   # uncomment to train for continuous variable
 pep_stats test.model > working.stats
 
 # At this point, you might tweak the input to pep_train to try to improve your
