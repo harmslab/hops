@@ -107,9 +107,9 @@ def main(argv=None):
     f.close()
 
     # Write out human-readable log file 
-    f = open(log_out_file,"w")
-    f.write(forest.log)
-    f.close()
+    #f = open(log_out_file,"w")
+    #f.write(forest.log)
+    #f.close()
  
 if __name__ == "__main__":
     main() 
