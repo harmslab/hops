@@ -36,7 +36,6 @@ class Features:
         """
         
         self._data_files = data_files
-
         self._seq_length = seq_length
         self._use_sliding_windows = use_sliding_windows
         self._use_flip_pattern = use_flip_pattern
@@ -54,7 +53,6 @@ class Features:
                 data_files = [data_files]
 
             for d in self._data_files:
-                print(d)
                 if d[-4:] == ".csv":
                     self._read_aa_data_file_csv(d)
                 elif d[-5:] == ".json":
@@ -120,53 +118,6 @@ class Features:
                     v = np.mean(val)
                 else:
                     v = data[k]["values"][aa] 
-
-                self._base_feature_dict[k][aa] = v
-
-
-    def _read_aa_data_file_csv(self,data_file):
-        """
-        Read in a data file in whitespace-delimited format.  The top row is assumed to be
-        the name of the feature.  Empty lines and lines beginning with # are ignored.  
-        """
-       
-        if self._compiled:
-            err = "You cannot add more features after compiling\n"
-            raise ValueError(err) 
- 
-        # Read file
-        f = open(data_file,"r")
-        lines = f.readlines()
-        f.close()
-
-        lines = [l for l in lines if l.strip() != "" and not l.startswith("#")]
-        
-        # Grab top line for each feature
-        base_features = lines[0].split()
-
-        for k in base_features:
-
-            # Make sure we haven't already seen this feature    
-            try:
-                self._base_feature_dict[k]
-                err = "Feature name {} duplicated".format(k)
-                raise ValueError(err)
-            except:
-                pass
-
-            self._base_feature_dict[k] = {a:0.0 for a in "ACDEFGHIKLMNPQRSTVWY"}
-
-        # Go through lines, populating features for each amino acid
-        for l in lines[1:]:
-            col = l.split()
-
-            aa = col[0]
-            for i, k in enumerate(base_features):
-
-                try:
-                    v = float(col[i+1])
-                except ValueError:
-                    v = np.NaN
 
                 self._base_feature_dict[k][aa] = v
 
@@ -261,6 +212,9 @@ class Features:
    
     @property
     def num_features(self):
+        """
+        Number of features.
+        """
 
         # No features if not yet compiled
         if not self._compiled:
@@ -270,6 +224,9 @@ class Features:
 
     @property
     def features(self):
+        """
+        Features to use.
+        """
 
         # No features if not yet compiled
         if not self._compiled:
@@ -280,3 +237,14 @@ class Features:
                                self._pattern_features))
 
 
+    @property
+    def initialization_call(self):
+        """
+        Return dictionary of initialization call.
+        """
+
+        return {"data_files":self._data_file,
+                "seq_length":self._seq_length,
+                "use_sliding_windows":self._use_sliding_windows,
+                "use_flip_pattern":self._use_flip_pattern,
+                "features_to_ignore":self._features_to_ignore} 
