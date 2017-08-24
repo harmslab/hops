@@ -19,18 +19,21 @@ class Observations:
     Class for creating and holding machine learning training/test sets.
     """
     
-    def __init__(self,observation_file,test_size=0.1,value_type=None):
+    def __init__(self,observation_file,k_fold_size=10,value_type=None):
         """
         Initialize the class.
 
         observation_file: text file with observations. 
-        test_size:  fraction of data to place in the test set
+        k_fold_size: split the data into k_fold sets for cross validation.  
+                     1/k_fold_size observations are set aside as a true test set.
+                     The remaining observations are used for (k_fold_size-1)
+                     cross validation.
         value_type: type of value in the dataset.  If None, this is determined
                     from the file itself.
         """
        
         self._observation_file = observation_file
-        self._test_size = test_size
+        self._k_fold_size = k_fold_size
         self._value_type = value_type 
  
         # load in all of the observations
@@ -44,17 +47,16 @@ class Observations:
         # set initial breaks to None
         self._breaks = None
         
-    def new_test_set(self,test_size=None):
+    def _new_test_set(self):
         """
         Create a test set by randomizing indexes and selecting a subset to be used as test versus
         training.
         """
         
-        if test_size is not None:
-            self._test_size = test_size
-        
+        self._k_fraction = 1.0/self._k_fold_size
+        self._k_length = int(np.floor(len(self._indexes)*self._k_fraction))
+               
         np.random.shuffle(self._indexes)
-        self._test_length = int(np.floor(len(self._indexes)*self._test_size))
         
         
     def add_features(self,features_instance):
@@ -218,7 +220,7 @@ class Observations:
        
         self._values = np.copy(self._raw_values)
      
-        self.new_test_set()
+        self._new_test_set()
         
     def add_cutoff_filter(self,logic=">=",cutoff=None):
         """
@@ -241,7 +243,7 @@ class Observations:
             f = filter_ops[logic](self.values,cutoff)
             self._indexes = self._indexes[f]
                                               
-            self.new_test_set()
+            self._new_test_set()
 
     def remove_filters(self):
         """
@@ -249,7 +251,7 @@ class Observations:
         """          
             
         self._indexes = np.arange(len(self._raw_values))
-        self.new_test_set()
+        self._new_test_set()
     
     def add_classes(self,breaks):
         """
@@ -300,6 +302,14 @@ class Observations:
             return self._breaks
     
         return None
+
+    @property
+    def feature_names(self):
+        """
+        Return names of all features.
+        """
+        
+        return self._feature_names
  
     @property
     def sequences(self):
@@ -339,7 +349,7 @@ class Observations:
         Return sequences for test set.
         """
         
-        return self.sequences[0:self._test_length]
+        return self.sequences[0:self._k_length]
 
     @property
     def test_features(self):
@@ -347,7 +357,7 @@ class Observations:
         Return features for test set.
         """
         
-        return self.features[0:self._test_length,:]
+        return self.features[0:self._k_length,:]
 
     @property
     def test_values(self):
@@ -355,7 +365,7 @@ class Observations:
         Return values for test set.
         """
         
-        return self.values[0:self._test_length]    
+        return self.values[0:self._k_length]    
 
     @property
     def test_weights(self):
@@ -363,7 +373,7 @@ class Observations:
         Return weights for test set.
         """
         
-        return self.weights[0:self._test_length]
+        return self.weights[0:self._k_length]
 
     @property
     def training_sequences(self):
@@ -371,7 +381,7 @@ class Observations:
         Return sequences for training set.
         """
         
-        return self.sequences[self._test_length:]
+        return self.sequences[self._k_length:]
           
     @property
     def training_features(self):
@@ -379,7 +389,7 @@ class Observations:
         Return features for training set.
         """
         
-        return self.features[self._test_length:,:]
+        return self.features[self._k_length:,:]
         
     @property
     def training_values(self):
@@ -387,7 +397,7 @@ class Observations:
         Return values for training set.
         """
 
-        return self.values[self._test_length:]
+        return self.values[self._k_length:]
 
     @property
     def training_weights(self):
@@ -395,15 +405,122 @@ class Observations:
         Return weights for training set. 
         """
         
-        return self.weights[self._test_length:]
-    
-    @property
-    def feature_names(self):
+        return self.weights[self._k_length:]
+
+    def _meta_k_training(self,array_to_slice,k):
         """
-        Return names of all features.
+        Meta function that slices an array that returns a k-fold 
+        training set.  This should only be called by the public methods
+        in this class (things like get_k_training_sequences). 
         """
+
+        # Only use the real training set
+        real_training = array_to_slice[self._k_length:]
+
+        if k > self._k_fold_size -2 or k < 0:
+            err = "k must be between 0 and {}.\n".format(0,self._k_fold_size-2)
+            raise ValueError(err)
+
+        start =  real_training[:(k*self._k_length)]        
+        finish = real_training[((k+1)*self._k_length):]
         
-        return self._feature_names
+        return np.concatenate((start,finish))
+     
+    def _meta_k_test(self,array_to_slice,k):
+        """
+        Meta function that slices an array that returns a k-fold 
+        test set.  This should only be called by the public methods
+        in this class (things like get_k_test_sequences). 
+        """
+
+        # Only use the real training set
+        real_training = array_to_slice[self._k_length:]
+
+        if k > self._k_fold_size -2 or k < 0:
+            err = "k must be between 0 and {}.\n".format(0,self._k_fold_size-2)
+            raise ValueError(err)
+
+        return real_training[(k*self._k_length):((k+1)*self._k_length)]        
+
+    def get_k_training_sequences(self,k):
+        """
+        Get the kth set of training sequences for k-fold cross training and
+        validation.
+        
+        k must be between 0 and total k -1.
+        """
+
+        return self._meta_k_training(self.sequences,k)
+
+    def get_k_training_features(self,k):
+        """
+        Get the kth set of training features for k-fold cross training and
+        validation.
+        
+        k must be between 0 and total k -1.
+        """
+
+        return self._meta_k_training(self.features,k)
+
+    def get_k_training_values(self,k):
+        """
+        Get the kth set of training values for k-fold cross training and
+        validation.
+        
+        k must be between 0 and total k -1.
+        """
+
+        return self._meta_k_training(self.values,k)
+
+    def get_k_training_weights(self,k):
+        """
+        Get the kth set of training weights for k-fold cross training and
+        validation.
+        
+        k must be between 0 and total k -1.
+        """
+
+        return self._meta_k_training(self.weights,k)
+
+    def get_k_test_sequences(self,k):
+        """
+        Get the kth set of test sequences for k-fold cross test and
+        validation.
+        
+        k must be between 0 and total k -1.
+        """
+
+        return self._meta_k_test(self.sequences,k)
+
+    def get_k_test_features(self,k):
+        """
+        Get the kth set of test features for k-fold cross test and
+        validation.
+        
+        k must be between 0 and total k -1.
+        """
+
+        return self._meta_k_test(self.features,k)
+
+    def get_k_test_values(self,k):
+        """
+        Get the kth set of test values for k-fold cross test and
+        validation.
+        
+        k must be between 0 and total k -1.
+        """
+
+        return self._meta_k_test(self.values,k)
+
+    def get_k_test_weights(self,k):
+        """
+        Get the kth set of test weights for k-fold cross test and
+        validation.
+        
+        k must be between 0 and total k -1.
+        """
+
+        return self._meta_k_test(self.weights,k)
 
 
 def calc_features(sequence_data,use_flip_pattern=True,use_sliding_windows=12,
