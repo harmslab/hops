@@ -13,13 +13,15 @@ from . import decompose_model
 
 class MachineLearner:
     """
-    Main user-accessed class.
+    Main user-accessed class for controlling a peplearn calculation.
     """
 
     def __init__(self,sk_model,fit_type):
         """
-        sk_model is either an instance of an SKlearn model or the clas itself.
+        sk_model is either an instance of an SKlearn model or the class itself.
         If passed as a class, the model is used with default parameters.
+
+        fit_type: "regressor" or "classifier"
         """
 
         self._model = sk_model   
@@ -161,9 +163,7 @@ class MachineLearner:
 
         return self._obs.test_values
 
-
-    @property
-    def roc_curve(self):
+    def calc_roc_curve(self):
         """
         Calculate a reciever operator characterstic curve for a trained model.
         """
@@ -173,7 +173,11 @@ class MachineLearner:
             return None
  
         out = []
-       
+
+        out.append("# {}\n".format(44*"-"))
+        out.append("# Classifier statistics\n")
+        out.append("# {}\n".format(44*"-"))
+ 
         # Calculate the predicted versus real values 
         y_calc = self._fit_result.predict(self._test_features)
         y_obs = self._obs.test_values
@@ -182,6 +186,7 @@ class MachineLearner:
         pct_correct = sum(y_calc == y_obs)/len(y_obs)
         out.append("% correct: {:8.3f}\n".format(100*pct_correct))
 
+        out.append("Area under ROC curve:\n")
         # Go through each class and calculate an AUC curve
         breaks = self._obs.breaks
         num_classes = len(breaks) + 1
@@ -195,58 +200,71 @@ class MachineLearner:
             if i == 0:
                 label = "       E <={:8.3f}".format(breaks[0])
             elif i == (num_classes - 1):
-                label = "       E > {:8.3}".format(breaks[-1])
+                label = "       E > {:8.3f}".format(breaks[-1])
             else:
-                label = "{:3} <= E < {:8.3}".format(breaks[i-1],breaks[i])
+                label = "{:8.3f} <= E < {:8.3f}".format(breaks[i-1],breaks[i])
 
-            out.append("{}: {:8.3f}\n".format(label,100*auc(a,b)))
+            result = auc(a,b)
+            result_key = "{:.1f}".format(np.floor(10*result))
+            result_dict = {"5.0":"failed",
+                           "6.0":"poor",
+                           "7.0":"fair",
+                           "8.0":"good",
+                           "9.0":"excellent"}
 
+            result_call = result_dict[result_key]
+
+            out.append("{}: {:8.3f} -> {}\n".format(label,100*result,result_call))
+        out.append("\n")   
+ 
         return "".join(out)
 
-    @property
-    def summary_stats(self):
+    def calc_summary_stats(self):
+        """
+        Return a report with summary statistics for the model.
+        """
 
         out = []
 
+        out.append("# {}\n".format(44*"-"))
+        out.append("# Summary statistics\n")
+        out.append("# {}\n".format(44*"-"))
+
         # Make sure the training has been done
         if not self._is_trained:
-            out.append("Model has not yet been trained.\n")
-            return "\n".join(out)
+            out.append("Model has not yet been trained.\n\n")
+            return "".join(out)
 
         # R^2 for test and training set
-        try:
-            r2_train = self._model.score(self._training_features,self._obs.training_values)
-            r2_test = self._model.score(self._test_features,self._obs.test_values)
+        r2_train = self._model.score(self._training_features,self._obs.training_values)
+        r2_test = self._model.score(self._test_features,self._obs.test_values)
 
-            out.append("r2_train: {:6.3f}".format(r2_train))
-            out.append("r2_test:  {:6.3f}".format(r2_test))
-        except:
-            out.append("Could not calculate fit statistics\n")
+        out.append("r2_train: {:6.3f}\n".format(r2_train))
+        out.append("r2_test:  {:6.3f}\n".format(r2_test))
+        out.append("\n")
 
         if self._fit_type == "classifier":
-            out.append(self.roc_curve)
-    
-        out = "\n".join(out)
+            out.append(self.calc_roc_curve())
+   
+        out = "".join(out)
 
         return out
 
-    @property
-    def feature_importance(self):
+    def calc_feature_importance(self):
+        """
+        Return a report describing the importance of the features of the model
+        for discrimniating peptides.
+        """
 
         out = []
 
         # Feature importance in final model
-        try:
-            order = np.argsort(self._model.feature_importances_)
-            order = order[::-1]
+        importance = np.copy(self._model.feature_importances_)
 
-            feature_dict = {}
-            for i in order:
-                feature_dict[self._obs.feature_names[i]] = self._model.feature_importances_[i] 
+        feature_dict = {}
+        for i in range(len(importance)):
+            feature_dict[self._obs.feature_names[i]] = importance[i] 
 
-            out.append(decompose_model.summary(feature_dict))
+        out.append(decompose_model.summary(feature_dict))
 
-        except:
-            out.append("Could not calculate feature importances.\n")
-        
         return "".join(out)

@@ -177,7 +177,7 @@ def _merge_categories(feature_dict):
             continue 
 
        
-        # Deal with stand-alone categories 
+        # Deal with stand-alone features 
         categories = category_dict[k]
         for c in categories.keys():
 
@@ -193,22 +193,25 @@ def _merge_categories(feature_dict):
 
     return out_dict 
 
-def _compile_report(features,title=""):
+def _compile_report(features,title="",xlabel=""):
     """
     Compile a pretty report given a set of features.
     """
 
+    if title == "":
+        title = "Model report"
+
+    if xlabel == "":
+        xlabel = "feature"
+
     # Construct header
     out = []
-    out.append("# {}\n".format((76*"-")))
-    if title != "":
-        out.append("# {}\n".format(title))
-    else:
-        out.append("# Model report\n")
-    out.append("# {}\n".format((76*"-")))
+    out.append("# {}\n".format(44*"-"))
+    out.append("# {}\n".format(title))
+    out.append("# {}\n".format(44*"-"))
 
     # Construct table
-    out.append("{:30s}{:10s}\n".format("feature","importance"))
+    out.append("{:36s}{:10s}\n".format(xlabel,"importance"))
 
     # Sort by importance (if dict)
     if type(features) == dict:
@@ -228,50 +231,91 @@ def _compile_report(features,title=""):
         key_list = ["{}".format(i) for i in range(len(features))]
         
     for k in key_list:
-        out.append("{:30s}{:10.5f}\n".format(k,100*out_dict[k]))
-        
-    return out
+        out.append("{:36s}{:10.5f}\n".format(k,100*out_dict[k]))
+
+    out.append("\n")
+    return "".join(out)
+
+def _category_by_position_table(category_position_importance,category_importance):
+
+    categories = list(category_position_importance.keys())
+    categories.sort()
     
+    out = []
+    out.append("# {}\n".format(44*"-"))
+    out.append("# {}\n".format("Category vs. position breakdown"))
+    out.append("# {}\n".format(44*"-"))
+    
+    out.append("{:>13s}".format("position"))
+    out.extend(["{:>13s}".format(c) for c in categories])
+    out.append("\n")
+
+    size = len(category_position_importance[categories[0]])
+    for i in range(size):
+        out.append("{:13d}".format(i))
+        for c in categories:
+            out.append("{:13.5f}".format(100*category_importance[c]*category_position_importance[c][i]))
+        out.append("\n") 
+    
+    out.append("\n")
+    return "".join(out) 
+
 def summary(feature_dict):
     """
+    Summarize the importance of the features and categories for the model.
     """
 
     out = []
-   
-    total_features = _merge_windows(feature_dict)
-    out.append(_compile_report(total_features,"total feature importance"))
 
-    total_categories = _merge_categories(total_features)
-    out.append(_compile_report(total_categories,"total category importance"))
+    # Calcualte the importance of each position (integrated over features) 
+    position_importance = _merge_positions(feature_dict)
 
-    pos_importance = _merge_positions(feature_dict) 
-    out.append(_compile_report(pos_importance,"total position importance"))
+    # Calculate the importance of each feature (integrated over positions)
+    feature_importance  = _merge_windows(feature_dict)
 
-    cat_pos_summary = {}
-    all_categories = list(total_categories.keys())
-    for categ in all_categories:
-        local_categories = _merge_categories(feature_dict)
-        local_categ = [k for k in local_categories.keys() if categ in k]
-        local_categ = {k:local_categories[k] for k in local_categ}
-        categ_pos_importance = _merge_positions(local_categ)
-        cat_pos_summary[categ] = categ_pos_importance
+    # Calculate the importance of each feature category (integrated over 
+    # positions)
+    category_importance = _merge_categories(feature_importance)
 
-        out.append(_compile_report(categ_pos_importance,"{} position importance".format(categ)))
+    # Calculate the importance of each feature category at each position
+    category_position_importance = {}
 
-    categ = list(cat_pos_summary.keys())
-    categ.sort()
-   
-    tmp_out = ["{:>13s}".format("position")]
-    tmp_out.extend(["{:>13s}".format(c) for c in categ])
-    tmp_out.append("\n")
+    # Collapse features into categories, keeping position information
+    local_categories = _merge_categories(feature_dict)
+    for category in category_importance.keys():
 
-    size = len(cat_pos_summary[categ[0]])
-    for i in range(size):
-        tmp_out.append("{:13d}".format(i))
-        for c in categ:
-            tmp_out.append("{:13.5}".format(100*total_categories[c]*cat_pos_summary[c][i]))
-        tmp_out.append("\n") 
+        # Grab only features matching this category
+        this_category_at_positions = {}
+        for c in local_categories.keys():  
+            if c.find(category) != -1:
+                this_category_at_positions[c] = local_categories[c]
 
-    out.append("".join(tmp_out))        
+        # Calculate the importance of each position 
+        category_position_importance[category] = _merge_positions(this_category_at_positions)
+
+    # Category by position breakdown
+    out.append(_category_by_position_table(category_position_importance,
+                                           category_importance))
+
+
+    # Category, position, feature importance
+    out.append(_compile_report(category_importance,"total category importance",
+                               xlabel="category"))
+
+    out.append(_compile_report(position_importance,"total position importance",
+                               xlabel="position"))
+
+    out.append(_compile_report(feature_importance,"total feature importance"))
+
+    # For each category, write report.  Sort categories from most to least 
+    # important
+    #all_categories = [(category_importance[k],k) for k in category_importance.keys()]
+    #all_categories.sort(reverse=True)
+    #all_categories = [c[1] for c in all_categories]
+
+    #for category in all_categories:
+    #    out.append(_compile_report(category_position_importance[category],
+    #                               "{} position importance".format(category),
+    #                               xlabel="position"))
 
     return "".join(out)
