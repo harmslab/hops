@@ -34,5 +34,6 @@ setup(name="peplearn",
                   'pep_train = peplearn.console.train:main',
                   'pep_predict = peplearn.console.predict:main',
                   'pep_stats = peplearn.console.stats:main',
+                  'pep_pred_to_fasta = peplearn.console.pred_to_fasta:main',
             ]
       })
