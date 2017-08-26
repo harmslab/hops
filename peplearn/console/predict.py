@@ -53,7 +53,6 @@ def main(argv=None):
 
     # Calculate features
     features = pickle.load(open(args.feature_pickle,"rb"))
-    features.add_classes([-2,0])
     
     # Make predictions
     predictions = forest.predict(features)
@@ -61,6 +60,21 @@ def main(argv=None):
     seqs.sort()
     
     f = open(predictions_file,'w')
+
+    if forest.fit_type == "classifier":
+
+        for i in range(len(forest._obs.breaks)+1):
+        
+            if i == 0:
+                f.write("# class {:2d}:           E <= {:7.3f}\n".format(i,forest._obs.breaks[i]))
+            elif i == len(forest._obs.breaks):
+                f.write("# class {:2d}: {:7.3f} < E\n".format(i,forest._obs.breaks[i-1]))
+            else:
+                f.write("# class {:2d}: {:7.3f} < E <= {:7.3f}\n".format(i,
+                                                             forest._obs.breaks[i-1],
+                                                             forest._obs.breaks[i]))
+    
+
     for s in seqs:
 
         if predictions[s][0].is_integer():
