@@ -194,6 +194,17 @@ class MachineLearner:
         return self._fit_type
 
     @property
+    def breaks(self):
+        """
+        Breaks for classification.
+        """
+    
+        if self.fit_type == "classifier":
+            return self._obs.breaks
+        else:
+            return None
+
+    @property
     def training_features(self):
         """
         Standardized features for training.
