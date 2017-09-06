@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 __description__ = \
 """
-Predict binding from a pre-calculated feature file and trained peplearn model.
+Predict binding from a pre-calculated feature file and trained hops model.
 """
 __author__ = "Michael J. Harms"
 __date__ = "2017-08-23"

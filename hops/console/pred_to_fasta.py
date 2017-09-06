@@ -195,7 +195,7 @@ def main(argv=None):
     
     # Positionals
     parser.add_argument("fasta_file",help="fasta file on which to apply predictions")
-    parser.add_argument("prediction_file",help="prediction file (output of pep_predict")
+    parser.add_argument("prediction_file",help="prediction file (output of hops_predict")
 
     # Options 
     parser.add_argument("-o","--outfile",help="output file name",action="store",type=str,default=None)

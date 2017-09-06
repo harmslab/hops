@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 __description__ = \
 """
-Use peplearn to calculate a collection of features for all sequences in a file.
+Use hops to calculate a collection of features for all sequences in a file.
 """
 __author__ = "Michael J. Harms"
 __date__ = "2017-08-01"
 __usage__ = "calc_features.py sequence_data out_dir [num_threads]"
 
-import peplearn as pl
+import hops
 import os, sys, pickle, argparse
 
 def main(argv=None):
@@ -44,7 +44,7 @@ def main(argv=None):
         raise FileExistsError(err)
 
     # calculate features
-    features = pl.calc_features(args.enrich_file,num_threads=num_threads)
+    features = hops.calc_features(args.enrich_file,num_threads=num_threads)
 
     f = open(data_out_file,"wb")
     pickle.dump(features,f)
