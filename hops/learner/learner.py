@@ -15,7 +15,7 @@ import sys, copy
 
 class MachineLearner:
     """
-    Main user-accessed class for controlling a peplearn calculation.
+    Main user-accessed class for controlling a hops calculation.
     """
 
     def __init__(self,sk_model,fit_type):

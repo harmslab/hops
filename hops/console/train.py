@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 __description__ = \
 """
-Use peplearn and sklearn to train a random forest model against a
+Use hops and sklearn to train a random forest model against a
 pre-calculated feature file.  If the user specifies specifies category
 breaks, use a classifier.  Otherwise, use a continuous regression 
 model.
@@ -9,7 +9,7 @@ model.
 __author__ = "Michael J. Harms"
 __date__ = "2017-08-23"
 
-import peplearn as pl
+import hops 
 
 import sklearn
 
@@ -90,7 +90,7 @@ def main(argv=None):
         #model = svm.SVR(kernel='rbf',C=1e-3,gamma=0.1) 
         
     # Train models
-    forest = pl.MachineLearner(model,fit_type)
+    forest = hops.MachineLearner(model,fit_type)
     forest.train(features,weights=weight_type,kfold=True)
 
     # Write out model pickle
