@@ -41,7 +41,7 @@ def main(argv=None):
     if args.outfile is None:
         feature_base = os.path.split(args.feature_pickle)[1]
         trained_model_base = os.path.split(args.trained_pickle)[1]
-        predictions_file = os.path.join(args.outdir,"{}_{}_predictions.txt".format(feature_base,trained_model_base))
+        predictions_file = os.path.join("{}_{}_predictions.txt".format(feature_base,trained_model_base))
     else:
         predictions_file = args.outfile
 

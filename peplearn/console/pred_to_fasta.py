@@ -9,16 +9,19 @@ __author__ = "Michael J. Harms"
 __date__ = ""
 __usage__ = ""
 
+import localcider
+
 import numpy as np
 
 import sys, argparse
+
 
 def read_predictions(pred_file):
     """
     Read a predictions file with format:
 
-    SEQUENCE1  pred1
-    SEQUENCE2  pred2
+    SEQUENCE1  pred1  err1
+    SEQUENCE2  pred2  err2
     ...        ...
     
     return a dictionary mapping sequence to prediction
@@ -34,8 +37,9 @@ def read_predictions(pred_file):
 
             key = col[0]
             pred = float(col[1])
+            err  = float(col[2])
     
-            out_dict[key] = pred
+            out_dict[key] = (pred,err)
 
     return out_dict
 
@@ -43,6 +47,7 @@ def predict_binding(sequence,pred_dict,cutoff,kmer_size):
     """
     Predict whether (and where) a sequence should bind.
     """
+
      
     kmer_list = [sequence[i:(i+kmer_size)] for i in range(len(sequence)-kmer_size+1)]
    
@@ -52,20 +57,36 @@ def predict_binding(sequence,pred_dict,cutoff,kmer_size):
     # Figure out if any of these kmers are predicted to bind
     num_pred_kmers = 0
     best_score = 1000000000000
+    err = "na"
+    hydropathy = "na"
+    fx_disorder = "na"
+    total = 0.0
     for i, k in enumerate(kmer_list):
         try:
-            prediction = pred_dict[k]
+
+            prediction = pred_dict[k][0]
             if prediction < best_score:
                 best_score = prediction
+                err = pred_dict[k][1]
+
+            total += np.exp(-prediction)
+
             if prediction <= cutoff:
                 prediction = 1  
                 num_pred_kmers += 1
+
+                s = localcider.sequenceParameters.Sequence(k)
+                hydropathy = s.meanHydropathy()
+                fx_disorder = s.fraction_disorder_promoting()
+
             else:
                 prediction = 0                             
         except KeyError:
             prediction = -1  
 
         bind_array[i,i:(i + kmer_size)] = prediction
+
+    total = -np.log(total)
 
     # Look for sequence positions that have at least one "no-bind"
     # call from a kmer, then sequence positions that have at least
@@ -92,15 +113,23 @@ def predict_binding(sequence,pred_dict,cutoff,kmer_size):
 
     binds = num_pred_kmers > 0
 
-    meta_info = "META: binds: {}, best_score: {}, num_kmers: {}, num_patches: {}".format(binds,
-                                                                                         best_score,
-                                                                                         num_pred_kmers,
-                                                                                         num_patches)
+    out = ["-->"]
+    out.append("{}".format(binds))
+    out.append("{}".format(best_score))
+    out.append("{}".format(err))
+    out.append("{}".format(num_pred_kmers))
+    out.append("{}".format(num_patches))
+    out.append("{}".format(total))
+    out.append("{}".format(hydropathy))
+    out.append("{}".format(fx_disorder))
+
+    meta_info = ",".join(out)
+
     pred_string = "".join(seq_array)
     
-    out = "{}\n{}\n{}\n".format(meta_info,sequence,pred_string)
+    final_out = "{}\n{}\n{}\n".format(meta_info,sequence,pred_string)
     
-    return out, binds     
+    return final_out, binds     
 
 
 def fasta_pred(fasta_file,pred_file,cutoff=-3,hits_only=False):
@@ -115,7 +144,19 @@ def fasta_pred(fasta_file,pred_file,cutoff=-3,hits_only=False):
     seq_name = None 
     current_sequence = []
 
-    out = []
+    header = ["#-->"]
+    header.append("binds")
+    header.append("best")
+    header.append("err")
+    header.append("num_kmers")
+    header.append("num_patches")
+    header.append("total")
+    header.append("hydropathy")
+    header.append("disorder")   
+  
+    out = [] 
+    out.append(",".join(header)) 
+    out.append("\n")    
 
     # Parse fasta file, splitting into kmers and doing preditions as we go
     with open(fasta_file) as lines:
