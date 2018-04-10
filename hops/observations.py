@@ -172,7 +172,7 @@ class Observations:
         """
         Load in a file of observations.  Expected to have format:
         
-        SEQ VALUE [VALUE_WEIGHT]
+        SEQ [VALUE] [VALUE_WEIGHT]
         
         Blank lines and lines starting with # are ignored.
         """
@@ -193,15 +193,17 @@ class Observations:
                 # Figure out whether this data is type float, integer, or string
                 if self._value_type is None:
                     try:
-                        v = float(col[1].strip())
-                        if v.is_integer():
+                        raw_value = float(col[1].strip())
+                        if raw_value.is_integer():
                             self._value_type = int  
                         else:
                             self._value_type = float
+                    except IndexError:
+                        self._value_type = str
+                        raw_value = "NA"
                     except ValueError:
                         self._value_type = str
-
-                raw_value = self._value_type(col[1].strip())
+                        raw_value = self._value_type(col[1].strip())
 
                 try:
                     weight = float(col[2])
